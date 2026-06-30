@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VolumeShelfs — Anchored Volume Profile</title>
+    <meta
+      name="description"
+      content="Anchored volume profile analysis: volume shelves, break-even supply/demand zones and volume gaps."
+    />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230e1117'/%3E%3Crect x='6' y='8' width='14' height='3' fill='%2326a69a'/%3E%3Crect x='6' y='14' width='9' height='3' fill='%238b95a7'/%3E%3Crect x='6' y='20' width='16' height='3' fill='%23ef5350'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="brand">
+          <span class="logo" aria-hidden="true"></span>
+          <div>
+            <h1>VolumeShelfs</h1>
+            <p>Anchored volume profile · shelves · break-even zones · gaps</p>
+          </div>
+        </div>
+        <div class="topbar-status" id="status" role="status"></div>
+      </header>
+
+      <section class="controls" id="controls">
+        <div class="control">
+          <label for="provider">Data source</label>
+          <select id="provider"></select>
+        </div>
+        <div class="control" id="apiKeyField" hidden>
+          <label for="apiKey">API key</label>
+          <input id="apiKey" type="password" placeholder="paste key" autocomplete="off" />
+        </div>
+        <div class="control">
+          <label for="symbol">Symbol</label>
+          <input id="symbol" type="text" placeholder="AAPL" autocomplete="off" />
+        </div>
+        <div class="control">
+          <label for="interval">Interval</label>
+          <select id="interval">
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+          </select>
+        </div>
+        <div class="control control-action">
+          <button id="load" class="primary">Load</button>
+        </div>
+        <div class="control control-action">
+          <button id="csvBtn" class="ghost">Import CSV</button>
+          <input id="csvInput" type="file" accept=".csv,text/csv" hidden />
+        </div>
+
+        <div class="control-spacer"></div>
+
+        <div class="control">
+          <label for="anchorMode">Anchor</label>
+          <select id="anchorMode">
+            <option value="auto-low">Auto: swing low</option>
+            <option value="auto-high">Auto: swing high</option>
+            <option value="manual">Manual (click chart)</option>
+          </select>
+        </div>
+        <div class="control">
+          <label for="rows">Rows <span id="rowsVal" class="muted"></span></label>
+          <input id="rows" type="range" min="10" max="120" step="1" />
+        </div>
+        <div class="control">
+          <label for="scale">Scale</label>
+          <select id="scale">
+            <option value="log">Log</option>
+            <option value="linear">Linear</option>
+          </select>
+        </div>
+        <div class="control">
+          <label for="va">Value area <span id="vaVal" class="muted"></span></label>
+          <input id="va" type="range" min="50" max="100" step="1" />
+        </div>
+        <div class="control toggles">
+          <label class="chk"><input type="checkbox" id="tShelves" checked /> Shelves</label>
+          <label class="chk"><input type="checkbox" id="tGaps" checked /> Gaps</label>
+          <label class="chk"><input type="checkbox" id="tProfile" checked /> Profile</label>
+          <label class="chk"><input type="checkbox" id="tVa" /> Value area</label>
+        </div>
+      </section>
+
+      <main class="workspace">
+        <div class="chart-wrap">
+          <canvas id="chart"></canvas>
+          <div class="hint">Tip: click any candle to anchor the profile there.</div>
+        </div>
+        <aside class="sidebar" id="sidebar">
+          <div class="panel">
+            <h2>Summary</h2>
+            <div id="summary" class="summary"></div>
+          </div>
+          <div class="panel">
+            <h2>Break-even zones &amp; shelves</h2>
+            <div id="zones" class="zones"></div>
+          </div>
+          <div class="panel">
+            <h2>Volume gaps</h2>
+            <div id="gaps" class="gaps"></div>
+          </div>
+          <div class="panel legend">
+            <h2>Legend</h2>
+            <ul>
+              <li><span class="sw demand"></span> Break-even demand — shelf below price, acts as support</li>
+              <li><span class="sw supply"></span> Break-even supply — shelf above price, acts as resistance</li>
+              <li><span class="sw neutral"></span> Volume shelf at price</li>
+              <li><span class="sw gap"></span> Volume gap — thin liquidity, fast moves</li>
+              <li><span class="sw poc"></span> POC — point of control (highest-volume row)</li>
+            </ul>
+          </div>
+        </aside>
+      </main>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
