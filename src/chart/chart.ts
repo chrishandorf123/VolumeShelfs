@@ -10,6 +10,28 @@ import {
 } from "./scale";
 import { DARK_THEME, type ChartTheme } from "./theme";
 
+export interface SeriesOverlay {
+  label: string;
+  /** Per-candle values (NaN where undefined); same length as candles. */
+  values: number[];
+  color: string;
+  dashed?: boolean;
+}
+
+export interface LevelOverlay {
+  label: string;
+  price: number;
+  color: string;
+  dashed?: boolean;
+}
+
+export interface ChartOverlays {
+  /** Line overlays plotted against the candle index (AVWAPs, MAs). */
+  series?: SeriesOverlay[];
+  /** Horizontal price levels (entry, stop, targets). */
+  levels?: LevelOverlay[];
+}
+
 export interface ChartModel {
   candles: Candle[];
   profile: AnchoredVolumeProfile | null;
@@ -22,6 +44,7 @@ export interface ChartModel {
     gaps: boolean;
     valueArea: boolean;
   };
+  overlays?: ChartOverlays;
 }
 
 const MARGIN = { top: 14, right: 64, bottom: 24, left: 8 };
@@ -136,6 +159,7 @@ export class VolumeShelfsChart {
     this.drawCandles();
     if (this.model.show.profile) this.drawProfile();
     if (this.model.show.valueArea) this.drawValueArea();
+    this.drawOverlays();
     this.drawPocAndPrice();
     this.drawAnchor();
     this.drawAxes();
@@ -297,6 +321,66 @@ export class VolumeShelfsChart {
       ctx.stroke();
     }
     ctx.setLineDash([]);
+  }
+
+  private drawOverlays(): void {
+    const overlays = this.model!.overlays;
+    if (!overlays) return;
+    const { ctx, priceAxis, indexAxis, plot } = this;
+    if (!priceAxis || !indexAxis) return;
+
+    for (const s of overlays.series ?? []) {
+      ctx.strokeStyle = s.color;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash(s.dashed ? [4, 3] : []);
+      ctx.beginPath();
+      let started = false;
+      let lastX = 0;
+      let lastY = 0;
+      for (let i = 0; i < s.values.length; i++) {
+        const v = s.values[i];
+        if (!Number.isFinite(v)) {
+          started = false;
+          continue;
+        }
+        const x = indexAxis.x(i);
+        const y = priceAxis.y(v);
+        if (!started) {
+          ctx.moveTo(x, y);
+          started = true;
+        } else {
+          ctx.lineTo(x, y);
+        }
+        lastX = x;
+        lastY = y;
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+      if (started) {
+        ctx.font = "10px system-ui, sans-serif";
+        ctx.fillStyle = s.color;
+        ctx.textAlign = "right";
+        ctx.textBaseline = "bottom";
+        ctx.fillText(s.label, Math.min(lastX, plot.x + plot.width) - 2, lastY - 2);
+      }
+    }
+
+    for (const lvl of overlays.levels ?? []) {
+      const y = Math.round(priceAxis.y(lvl.price)) + 0.5;
+      ctx.strokeStyle = lvl.color;
+      ctx.lineWidth = 1;
+      ctx.setLineDash(lvl.dashed ? [6, 4] : []);
+      ctx.beginPath();
+      ctx.moveTo(plot.x, y);
+      ctx.lineTo(plot.x + plot.width, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.font = "10px system-ui, sans-serif";
+      ctx.fillStyle = lvl.color;
+      ctx.textAlign = "left";
+      ctx.textBaseline = "bottom";
+      ctx.fillText(lvl.label, plot.x + 6, y - 2);
+    }
   }
 
   private drawPocAndPrice(): void {

@@ -11,6 +11,7 @@ import {
 import { VolumeShelfsChart, type ChartModel } from "./chart/chart";
 import { PROVIDERS, getProvider, parseCsv, type Interval } from "./data";
 import { formatPrice, formatVolume } from "./chart/scale";
+import { initScanner } from "./scanner-ui";
 
 // ---- DOM helpers -----------------------------------------------------------
 const $ = <T extends HTMLElement>(id: string): T => {
@@ -372,10 +373,29 @@ function initControls(): void {
   }
 }
 
+// ---- tabs ------------------------------------------------------------------
+function initTabs(): void {
+  const scanner = initScanner(setStatus);
+  const viewExplore = $("view-explore");
+  const viewScanner = $("view-scanner");
+  const tabs = document.querySelectorAll<HTMLButtonElement>(".tab");
+  tabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      const view = tab.dataset.view;
+      tabs.forEach((t) => t.classList.toggle("active", t === tab));
+      viewExplore.hidden = view !== "explore";
+      viewScanner.hidden = view !== "scanner";
+      if (view === "scanner") scanner.activate();
+      else chart.resize();
+    });
+  });
+}
+
 // ---- boot ------------------------------------------------------------------
 async function boot(): Promise<void> {
   initProviders();
   initControls();
+  initTabs();
   chart.resize();
   // Initial render with offline demo data so the app is never blank.
   const demo = getProvider("sample")!;

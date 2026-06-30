@@ -20,9 +20,14 @@
             <p>Anchored volume profile · shelves · break-even zones · gaps</p>
           </div>
         </div>
+        <nav class="tabs" id="tabs">
+          <button class="tab active" data-view="explore">Explore</button>
+          <button class="tab" data-view="scanner">Scanner</button>
+        </nav>
         <div class="topbar-status" id="status" role="status"></div>
       </header>
 
+      <div id="view-explore">
       <section class="controls" id="controls">
         <div class="control">
           <label for="provider">Data source</label>
@@ -115,6 +120,78 @@
           </div>
         </aside>
       </main>
+      </div>
+
+      <div id="view-scanner" hidden>
+        <section class="controls scanner-controls">
+          <div class="control">
+            <label>Universe</label>
+            <div class="seg" id="uniSource">
+              <button class="seg-btn active" data-src="demo">Demo universe</button>
+              <button class="seg-btn" data-src="live">Ticker list → API</button>
+            </div>
+          </div>
+          <div class="control grow" id="tickerField" hidden>
+            <label for="tickers">Tickers (space / comma / newline separated)</label>
+            <textarea id="tickers" rows="2" placeholder="AAPL MSFT NVDA AMD ..."></textarea>
+          </div>
+          <div class="control" id="benchField" hidden>
+            <label for="benchmark">Benchmark</label>
+            <input id="benchmark" type="text" value="SPY" />
+          </div>
+          <div class="control" id="scanProviderField" hidden>
+            <label for="scanProvider">Data source</label>
+            <select id="scanProvider"></select>
+          </div>
+          <div class="control" id="scanKeyField" hidden>
+            <label for="scanApiKey">API key</label>
+            <input id="scanApiKey" type="password" autocomplete="off" placeholder="paste key" />
+          </div>
+          <div class="control control-action">
+            <button id="runScan" class="primary">Run scan</button>
+          </div>
+          <div class="control control-action">
+            <button id="advBtn" class="ghost">Filters ▾</button>
+          </div>
+          <label class="chk apex"><input type="checkbox" id="onlyPass" /> A+ only (all gates)</label>
+        </section>
+
+        <section class="advanced" id="advanced" hidden>
+          <div class="adv-group">
+            <h3>Thresholds</h3>
+            <div class="adv-grid" id="thresholds"></div>
+          </div>
+          <div class="adv-group">
+            <h3>Ranking weights</h3>
+            <div class="adv-grid" id="weights"></div>
+          </div>
+        </section>
+
+        <main class="scanner-workspace">
+          <div class="results-pane">
+            <table class="results" id="resultsTable">
+              <thead>
+                <tr>
+                  <th>#</th><th>Ticker</th><th>Score</th><th>Gates</th>
+                  <th>Price</th><th>RS 3mo</th><th>Shelf</th><th>Pinch</th>
+                </tr>
+              </thead>
+              <tbody id="resultsBody"></tbody>
+            </table>
+            <div class="results-empty" id="resultsEmpty">Run a scan to see ranked candidates.</div>
+          </div>
+          <aside class="detail-pane" id="detailPane">
+            <div class="detail-head" id="detailHead">
+              <h2>Select a candidate</h2>
+              <p class="muted">Click a row to load its chart, gates, trade plan and confirmation checklist.</p>
+            </div>
+            <div class="chart-wrap detail-chart">
+              <canvas id="scanChart"></canvas>
+            </div>
+            <div class="detail-panels" id="detailPanels"></div>
+          </aside>
+        </main>
+      </div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

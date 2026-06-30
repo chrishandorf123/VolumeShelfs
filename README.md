@@ -16,7 +16,15 @@ trader looks for:
 You anchor the profile from a swing low or swing high (or click any candle), and
 the engine recomputes the shelves, gaps and break-even zones live.
 
+The app has two tabs:
+
+- **Explore** — load one symbol and study its anchored volume profile.
+- **Scanner** — run the full *Volume Shelf Scanner* checklist across a universe
+  of tickers, rank the candidates, and drill into each one's chart, gates,
+  trade plan and confirmation checklist.
+
 ![overview](docs/overview.png)
+![scanner](docs/scanner.png)
 
 ## Quick start
 
@@ -91,9 +99,16 @@ src/
     volumeProfile.ts    #   anchored profile: binning, POC, value area
     shelves.ts          #   shelf / gap detection + break-even classification
     swings.ts           #   swing-pivot detection for auto-anchoring
-  data/                 # pluggable data providers + CSV parser
-  chart/                # canvas renderer (candles, profile overlay, zones)
-  main.ts               # app controller wiring the pieces together
+    indicators.ts       #   SMA, ATR, anchored VWAP, returns, slope
+    avwap.ts            #   AVWAP anchors (52w hi/lo, YTD, earnings) + pinch
+    relativeStrength.ts #   RS vs a benchmark + RS line
+    anchor.ts           #   per-ticker anchor selection
+    scanner.ts          #   universe scan: gates, factors, scoring, ranking
+    tradePlan.ts        #   entry / stop / target levels
+  data/                 # pluggable data providers, CSV parser, demo universe
+  chart/                # canvas renderer (candles, profile, AVWAP/MA overlays)
+  scanner-ui.ts         # scanner tab: table, detail, trade plan, checklist
+  main.ts               # app controller + tab wiring
 ```
 
 ### The engine
@@ -117,6 +132,58 @@ src/
 
 All thresholds, the row count, the scale and the value-area fraction are
 adjustable live in the UI.
+
+## The scanner
+
+The **Scanner** tab implements the Volume Shelf Scanner checklist (a repeatable
+shelf + anchored-VWAP-pinch setup). It runs a universe through a stack of
+computable filters, scores and ranks the survivors, then lets you confirm each
+by eye.
+
+### Universe
+
+- **Demo universe (offline)** — ~16 bundled synthetic tickers plus a benchmark
+  with a mix of leaders, laggards, extended and illiquid names. Runs instantly,
+  no key.
+- **Ticker list → API** — paste a watchlist and a benchmark (default `SPY`); the
+  scanner fetches each ticker's daily bars through the selected provider and
+  scans them. Daily bars are the documented approximation; intraday only sharpens
+  true volume-at-price.
+
+### Gates (computed per ticker)
+
+| Gate | Passes when |
+| ---- | ----------- |
+| **Liquidity** | price ≥ min, 20-day avg dollar volume ≥ min |
+| **Trend & MA** | above a flat-to-rising 200-day MA, and above/within X% of the 50-day MA |
+| **Relative strength** | outperforms the benchmark over 1mo **and** 3mo, with the RS line near highs or above its own 50-day MA |
+| **Volume shelf** | a support shelf (HVN run, ≥ k×mean volume) sits at/just below price, within X% of its midpoint, with the POC at/below price |
+| **AVWAP pinch** | ≥ 2 anchored VWAPs (52w high/low, YTD open, earnings) cluster within X%, and price sits inside the pinch |
+| **Contraction** | ATR(14) contracting and no high-volume breakdown bar through the shelf in the last 5 bars |
+
+### Ranking
+
+Each candidate gets a 0–100 score. Five factors — shelf strength, relative
+strength, pinch tightness, proximity to the shelf, and range contraction — are
+min-max normalized across the scanned set and combined with adjustable weights
+(start equal-weighted, then re-weight toward whatever predicts your winners).
+Candidates are ordered by hard-gate count first (so a clean downtrend with a
+tight pinch can't outrank a real leader), then by score. Toggle **A+ only** to
+show names that clear all six gates.
+
+### Per-candidate detail
+
+Click any row to load its chart with the support shelf, AVWAP lines (pinch
+members solid), 50/200-day MAs, and the trade-plan levels drawn on it, plus:
+
+- the **gate breakdown** (what passed/failed and why),
+- a **trade plan** — reclaim entry, stop below the shelf, T1 (POC/next HVN), T2
+  (VAH and the next LVN air-pocket), risk % and R-multiples,
+- the **manual confirmation checklist** (the eyeball checks the scan can't do).
+
+> The bundled demo universe is synthetic, so gate passes vary — the AVWAP-pinch
+> and relative-strength gates in particular are strict. With live data the same
+> engine runs unchanged.
 
 ## Tuning the controls
 

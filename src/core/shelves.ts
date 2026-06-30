@@ -123,6 +123,95 @@ export function detectGaps(
   return gaps;
 }
 
+/** Mean volume per histogram row (`total_volume / N`). */
+export function meanBinVolume(profile: AnchoredVolumeProfile): number {
+  return profile.bins.length > 0 ? profile.totalVolume / profile.bins.length : 0;
+}
+
+/** A shelf with a strength score = peak row volume ÷ mean row volume. */
+export interface ScoredShelf extends VolumeShelf {
+  /** Peak HVN row volume divided by mean bin volume (≥ k by construction). */
+  strength: number;
+}
+
+/**
+ * Detect shelves the way the Volume Shelf Scanner spec defines them: a row is a
+ * High Volume Node when its volume ≥ `k` × mean bin volume, and a shelf is a
+ * run of ≥ `minBins` adjacent HVN rows. Each shelf carries a strength score.
+ */
+export function detectHvnShelves(
+  profile: AnchoredVolumeProfile,
+  currentPrice: number,
+  k = 1.5,
+  minBins = 2,
+): ScoredShelf[] {
+  const mean = meanBinVolume(profile);
+  if (mean <= 0) return [];
+  const cutoff = mean * k;
+  const bins = profile.bins;
+
+  const shelves: ScoredShelf[] = [];
+  let runLow = -1;
+  const flush = (lowIdx: number, highIdx: number) => {
+    if (highIdx - lowIdx + 1 < minBins) return;
+    let volume = 0;
+    let peak = lowIdx;
+    for (let i = lowIdx; i <= highIdx; i++) {
+      volume += bins[i].volume;
+      if (bins[i].volume > bins[peak].volume) peak = i;
+    }
+    const priceLow = bins[lowIdx].low;
+    const priceHigh = bins[highIdx].high;
+    shelves.push({
+      priceLow,
+      priceHigh,
+      peakPrice: bins[peak].mid,
+      volume,
+      fraction: profile.totalVolume > 0 ? volume / profile.totalVolume : 0,
+      lowIndex: lowIdx,
+      highIndex: highIdx,
+      zone: classifyZone({ priceLow, priceHigh }, currentPrice),
+      strength: bins[peak].volume / mean,
+    });
+  };
+  for (let i = 0; i < bins.length; i++) {
+    if (bins[i].volume >= cutoff) {
+      if (runLow < 0) runLow = i;
+    } else if (runLow >= 0) {
+      flush(runLow, i - 1);
+      runLow = -1;
+    }
+  }
+  if (runLow >= 0) flush(runLow, bins.length - 1);
+  return shelves;
+}
+
+export interface NearestShelves {
+  /** Closest shelf whose high is at/below price. */
+  below: ScoredShelf | null;
+  /** Closest shelf whose low is at/above price. */
+  above: ScoredShelf | null;
+  /** Shelf the price currently sits inside, if any. */
+  inside: ScoredShelf | null;
+}
+
+/** Find the nearest shelves above/below (and any straddling) the current price. */
+export function nearestShelves(shelves: ScoredShelf[], currentPrice: number): NearestShelves {
+  let below: ScoredShelf | null = null;
+  let above: ScoredShelf | null = null;
+  let inside: ScoredShelf | null = null;
+  for (const s of shelves) {
+    if (currentPrice >= s.priceLow && currentPrice <= s.priceHigh) {
+      inside = s;
+    } else if (s.priceHigh < currentPrice) {
+      if (!below || s.priceHigh > below.priceHigh) below = s;
+    } else if (s.priceLow > currentPrice) {
+      if (!above || s.priceLow < above.priceLow) above = s;
+    }
+  }
+  return { below, above, inside };
+}
+
 export interface ProfileAnalysis {
   shelves: VolumeShelf[];
   gaps: VolumeGap[];
