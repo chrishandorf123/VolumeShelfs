@@ -196,14 +196,16 @@ says *wait for the reclaim*.
 
 ### Ranking
 
-Each candidate gets a 0–100 score. Six factors — **ideal shelf-at-price**,
-**gap-play quality** (the two volume-profile factors carry the most weight),
-relative strength, AVWAP constructiveness, pinch tightness, and range
-contraction — are min-max normalized across the scanned set and combined with
-adjustable weights. Candidates are ordered by **hard-gate count first**
-(liquidity + trend + RS), so a clean downtrend with a fat decline shelf and a
-tight gap can't outrank a real leader, then by score. Toggle **A+ only** to show
-names that clear all seven gates.
+Each candidate gets an **absolute** 0–100 score (not relative to the scanned
+set, so it means the same thing whether you scan one ticker or a hundred). Seven
+factors — **ideal shelf-at-price**, **gap-play quality** (the two volume-profile
+factors carry the most weight), relative strength, AVWAP constructiveness, pinch
+tightness, range contraction, and the **confluence scorecard** — each map to a
+0–1 quality and combine with adjustable weights. Candidates are ordered by
+**hard-gate count first** (liquidity + trend + RS), so a clean downtrend with a
+fat decline shelf and a tight gap can't outrank a real leader, then by score.
+Toggle **A+ only** to show names that clear all seven gates, and **Export CSV**
+to save the ranked list (your weekly "top setups").
 
 ### Plain-English verdict (for beginners)
 
@@ -215,13 +217,34 @@ support when the AVWAP confirms and the reward-to-risk is worth it — otherwise
 wait. It will not tell you to buy a wide-stop / low-reward trade, and most of
 the time the honest answer is *wait*. (Educational tool, not financial advice.)
 
+### Confluence scorecard, thesis & confirmation
+
+On top of the seven gates, the app turns Jake Wujastyk's full method into a
+single scoreable gate and two supporting reads (shown in **both** tabs):
+
+- **Confluence scorecard** — an auto-graded **A+/A/B/C · N/10** across his six
+  tiers: on a shelf above the 200-day with a rising 5-day · an AVWAP pinch ·
+  holding the value-area low · a reversal / AVWAP-reclaim trigger · reaction
+  volume ≥ 1.5× the 20-day average · RSI > 50 with the MACD histogram turning up
+  · the market not breaking down and the name outperforming · the weekly bias
+  aligned · price within ~1 SD of the anchored mean (not chasing) · a clean
+  invalidation with R:R ≥ 1.5. It **flags the edge** (reversion-into-strength: an
+  uptrend on a shelf, stretched at/below the anchored mean) and **warns when
+  you're chasing** (price 2+ SD above the mean) — which downgrades a would-be BUY
+  to WATCH.
+- **Bull & bear thesis** — both directional cases, each with a concrete
+  **trigger → targets → invalidation**, derived from the volume structure.
+- **Confirmation (MACD · RSI · % range)** — the momentum reads stacked around the
+  volume core, plus **OBV** (accumulation / a price-vs-volume divergence warning).
+
 ### Per-candidate detail
 
 Click any row to load its chart with the support shelf, the AVWAP (key
-break-even line) and its ±1σ bands, confluence AVWAPs, 50/200-day MAs, and the
-trade-plan levels, plus:
+break-even line) and its **±1σ / ±2σ bands** (the ±2σ is the exhaustion / "don't
+chase" zone), confluence AVWAPs, 50/200-day MAs, and the trade-plan levels, plus:
 
 - the **verdict panel** (the plain-English call above),
+- the **confluence scorecard**, **bull/bear thesis** and **confirmation** panels,
 - the **main-play panel** (the gap traverse, or the shelf-at-price ideal),
 - the **AVWAP panel** (regime, slope/side, reclaim/loss, pinch),
 - the **gate breakdown**, a gap-play-aware **trade plan**, and the **manual
