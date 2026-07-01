@@ -32,6 +32,14 @@ export interface ChartOverlays {
   levels?: LevelOverlay[];
 }
 
+/** A suggested anchor pivot the coach marks on the chart (click to anchor). */
+export interface AnchorMarker {
+  index: number;
+  price: number;
+  kind: "low" | "high";
+  recommended: boolean;
+}
+
 export interface ChartModel {
   candles: Candle[];
   profile: AnchoredVolumeProfile | null;
@@ -45,6 +53,8 @@ export interface ChartModel {
     valueArea: boolean;
   };
   overlays?: ChartOverlays;
+  /** Suggested anchor pivots (swing low/high) the coach marks. */
+  suggestions?: AnchorMarker[];
 }
 
 const MARGIN = { top: 14, right: 64, bottom: 24, left: 8 };
@@ -108,6 +118,29 @@ export class VolumeShelfsChart {
     this.canvas.removeEventListener("dblclick", this.handleDblClick);
     this.canvas.removeEventListener("wheel", this.handleWheel);
     this.ro?.disconnect();
+  }
+
+  /**
+   * Set the visible window to the last `count` candles (a timeframe button).
+   * Pass null (or a count >= total) to fit all. Persists across re-renders of
+   * the same series so option tweaks don't reset the user's timeframe.
+   */
+  setVisibleCount(count: number | null): void {
+    const n = this.model?.candles.length ?? 0;
+    if (n === 0) return;
+    if (count === null || count >= n) {
+      this.view = null;
+    } else {
+      const c = Math.min(Math.max(count, 10), n);
+      this.view = { start: n - c, end: n - 1 };
+    }
+    this.render();
+  }
+
+  /** Number of candles currently visible. */
+  get visibleCount(): number {
+    const n = this.model?.candles.length ?? 0;
+    return this.view ? this.view.end - this.view.start + 1 : n;
   }
 
   resize(): void {
@@ -187,9 +220,56 @@ export class VolumeShelfsChart {
     this.drawOverlays();
     this.drawPocAndPrice();
     this.drawAnchor();
+    this.drawSuggestions();
     this.drawAxes();
     this.drawCrosshair();
     ctx.restore();
+  }
+
+  private drawSuggestions(): void {
+    const marks = this.model!.suggestions;
+    if (!marks || !this.priceAxis || !this.indexAxis) return;
+    const { ctx, priceAxis, indexAxis, plot, theme, visible } = this;
+    for (const m of marks) {
+      if (m.index < visible.start || m.index > visible.end) continue;
+      const x = indexAxis.x(m.index);
+      const isLow = m.kind === "low";
+      const color = isLow ? theme.demandLine : theme.supplyLine;
+      const alpha = m.recommended ? 1 : 0.5;
+      const yBase = priceAxis.y(m.price);
+      // Flag sits just outside the candle: below a low, above a high.
+      const y = isLow ? Math.min(yBase + 16, plot.y + plot.height - 4) : Math.max(yBase - 16, plot.y + 10);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      // marker triangle pointing at the pivot
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      if (isLow) {
+        ctx.moveTo(x, y - 7);
+        ctx.lineTo(x - 5, y);
+        ctx.lineTo(x + 5, y);
+      } else {
+        ctx.moveTo(x, y + 7);
+        ctx.lineTo(x - 5, y);
+        ctx.lineTo(x + 5, y);
+      }
+      ctx.closePath();
+      ctx.fill();
+      // label
+      const text = `${m.recommended ? "★ " : ""}anchor: swing ${m.kind}`;
+      ctx.font = `${m.recommended ? "bold " : ""}10px system-ui, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = isLow ? "top" : "bottom";
+      const ty = isLow ? y + 3 : y - 3;
+      const w = ctx.measureText(text).width + 8;
+      ctx.globalAlpha = alpha * 0.85;
+      ctx.fillStyle = theme.background;
+      ctx.fillRect(x - w / 2, isLow ? ty : ty - 13, w, 13);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = color;
+      ctx.fillText(text, x, isLow ? ty + 1 : ty - 1);
+      ctx.restore();
+    }
   }
 
   private drawGrid(): void {

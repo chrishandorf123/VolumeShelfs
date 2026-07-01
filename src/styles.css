@@ -222,6 +222,50 @@ button:disabled {
   height: 100%;
 }
 
+.tf-bar {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(14, 17, 23, 0.72);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 3px 5px;
+}
+
+.tf-label {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin: 0 3px;
+}
+
+.tf {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  padding: 3px 9px;
+  font-size: 11.5px;
+  font-weight: 700;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.tf:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+.tf.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
 .hint {
   position: absolute;
   bottom: 8px;
@@ -586,6 +630,66 @@ button:disabled {
   font-size: 11px;
   color: var(--muted);
   font-style: italic;
+}
+
+/* ---- anchor coach ---- */
+.panel.coach {
+  border-left: 3px solid var(--accent);
+}
+.coach-why {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #c7cede;
+  margin: 0 0 10px;
+}
+.coach-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.coach-btn {
+  text-align: left;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.coach-btn .cb-flag {
+  opacity: 0.7;
+}
+.coach-btn.low {
+  border-left: 3px solid var(--demand);
+}
+.coach-btn.high {
+  border-left: 3px solid var(--supply);
+}
+.coach-btn:hover {
+  background: var(--panel-2);
+}
+.coach-btn.rec {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.coach-btn.active {
+  background: rgba(91, 141, 239, 0.16);
+  border-color: var(--accent);
+}
+.rec-tag {
+  margin-left: auto;
+  font-size: 9.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  background: rgba(91, 141, 239, 0.2);
+  color: var(--accent);
+  padding: 1px 5px;
+  border-radius: 3px;
 }
 
 .reco-chip {

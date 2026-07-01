@@ -1,11 +1,18 @@
 import "./styles.css";
 import {
   DEFAULT_OPTIONS,
+  DEFAULT_SCAN_CONFIG,
   analyzeProfile,
+  anchorCoach,
+  buildTradePlan,
   computeAnchoredProfile,
   defaultAnchorIndex,
   detectSwings,
+  recommend,
+  recoContextFromScan,
+  scanTicker,
   type AnalysisOptions,
+  type AnchorCoach,
   type Candle,
 } from "./core";
 import { VolumeShelfsChart, type ChartModel } from "./chart/chart";
@@ -13,6 +20,7 @@ import { PROVIDERS, getProvider, parseCsv, type Interval } from "./data";
 import { formatPrice, formatVolume } from "./chart/scale";
 import { initScanner } from "./scanner-ui";
 import { initGuide } from "./guide";
+import { recoPanelHtml } from "./reco-view";
 
 // ---- DOM helpers -----------------------------------------------------------
 const $ = <T extends HTMLElement>(id: string): T => {
@@ -44,6 +52,9 @@ const els = {
   summary: $("summary"),
   zones: $("zones"),
   gaps: $("gaps"),
+  tfBar: $("tfBarExplore"),
+  exploreReco: $("exploreReco"),
+  anchorCoach: $("anchorCoach"),
 };
 
 // ---- persisted settings ----------------------------------------------------
@@ -164,6 +175,9 @@ function recompute(): void {
     gapThreshold: state.options.gapThreshold,
   });
 
+  const coach = anchorCoach(c);
+  renderAnchorCoach(coach, anchor);
+
   const model: ChartModel = {
     candles: c,
     profile,
@@ -176,9 +190,45 @@ function recompute(): void {
       gaps: els.tGaps.checked,
       valueArea: els.tVa.checked,
     },
+    suggestions: coach
+      ? [
+          { index: coach.low.index, price: coach.low.price, kind: "low", recommended: coach.low.recommended },
+          { index: coach.high.index, price: coach.high.price, kind: "high", recommended: coach.high.recommended },
+        ]
+      : undefined,
   };
   chart.setModel(model);
   renderSidebar(model);
+}
+
+/** Render the interactive Anchor Coach: which pivot to anchor from, and why. */
+function renderAnchorCoach(coach: AnchorCoach | null, anchorIndex: number): void {
+  if (!coach) {
+    els.anchorCoach.innerHTML = "";
+    return;
+  }
+  const btn = (s: AnchorCoach["low"]) => {
+    const active = state.anchorMode === "manual" && anchorIndex === s.index;
+    return `<button class="coach-btn ${s.kind} ${s.recommended ? "rec" : ""} ${active ? "active" : ""}" data-anchor-idx="${s.index}">
+      <span class="cb-flag">⚑</span> Swing ${s.kind} · ${formatPrice(s.price)}${s.recommended ? ' <span class="rec-tag">best</span>' : ""}</button>`;
+  };
+  els.anchorCoach.innerHTML = `<div class="panel coach">
+    <h2 data-glossary="anchor" title="What is an anchor? Click to learn">Anchor coach</h2>
+    <p class="coach-why">${escapeHtml(coach.rationale)}</p>
+    <div class="coach-btns">${btn(coach.low)}${btn(coach.high)}</div>
+  </div>`;
+  els.anchorCoach.querySelectorAll<HTMLButtonElement>(".coach-btn").forEach((b) => {
+    b.addEventListener("click", () => {
+      state.anchorMode = "manual";
+      els.anchorMode.value = "manual";
+      state.anchorIndex = Number(b.dataset.anchorIdx);
+      recompute();
+    });
+  });
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 }
 
 function emptyModel(): ChartModel {
@@ -284,6 +334,7 @@ async function loadFromProvider(): Promise<void> {
     state.source = `${provider.label}: ${symbol}`;
     state.anchorMode = els.anchorMode.value as AnchorMode;
     recompute();
+    afterLoad();
     setStatus(`${state.source} · ${candles.length} bars`, "ok");
   } catch (err) {
     setStatus(err instanceof Error ? err.message : String(err), "error");
@@ -301,10 +352,50 @@ async function loadFromCsv(file: File): Promise<void> {
     state.source = file.name;
     state.anchorMode = els.anchorMode.value as AnchorMode;
     recompute();
+    afterLoad();
     setStatus(`${file.name} · ${candles.length} bars`, "ok");
   } catch (err) {
     setStatus(err instanceof Error ? err.message : String(err), "error");
   }
+}
+
+// ---- timeframe + verdict ---------------------------------------------------
+function activeTfBars(): number | null {
+  const btn = els.tfBar.querySelector<HTMLButtonElement>(".tf.active");
+  const bars = btn ? Number(btn.dataset.bars) : 126;
+  return bars > 0 ? bars : null;
+}
+
+function initTimeframe(): void {
+  els.tfBar.querySelectorAll<HTMLButtonElement>(".tf").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      els.tfBar.querySelectorAll(".tf").forEach((b) => b.classList.toggle("active", b === btn));
+      const bars = Number(btn.dataset.bars);
+      chart.setVisibleCount(bars > 0 ? bars : null);
+    });
+  });
+}
+
+/** Plain-English verdict for the single loaded symbol (RS unknown without a benchmark). */
+function updateExploreReco(): void {
+  const c = state.candles;
+  if (c.length < 20) {
+    els.exploreReco.innerHTML = "";
+    return;
+  }
+  try {
+    const r = scanTicker({ ticker: "symbol", candles: c }, c, DEFAULT_SCAN_CONFIG);
+    const reco = recommend({ ...recoContextFromScan(r), rsOk: null }, buildTradePlan(r));
+    els.exploreReco.innerHTML = recoPanelHtml(reco);
+  } catch {
+    els.exploreReco.innerHTML = "";
+  }
+}
+
+/** Run after a new series loads: apply the chosen timeframe and refresh the verdict. */
+function afterLoad(): void {
+  chart.setVisibleCount(activeTfBars());
+  updateExploreReco();
 }
 
 // ---- options wiring --------------------------------------------------------
@@ -398,6 +489,7 @@ async function boot(): Promise<void> {
   initControls();
   initTabs();
   initGuide();
+  initTimeframe();
   chart.resize();
   // Initial render with offline demo data so the app is never blank.
   const demo = getProvider("sample")!;
@@ -405,6 +497,7 @@ async function boot(): Promise<void> {
   state.source = "Demo data";
   state.anchorMode = els.anchorMode.value as AnchorMode;
   recompute();
+  afterLoad();
   setStatus("Demo data loaded · pick a source and Load a symbol", "ok");
 }
 

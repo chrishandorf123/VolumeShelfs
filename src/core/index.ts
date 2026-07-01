@@ -11,3 +11,4 @@ export * from "./anchor";
 export * from "./scanner";
 export * from "./tradePlan";
 export * from "./recommendation";
+export * from "./anchorCoach";

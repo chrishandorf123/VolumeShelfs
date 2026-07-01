@@ -270,7 +270,10 @@ export function scanTicker(
   let avwapReclaim = false;
   for (const idx of longAnchorIdx) {
     const st = avwapState(candles, idx);
-    if (st.regime === "bullish") avwapBullish = true;
+    // Constructive = price above a long AVWAP that isn't falling (rising or
+    // flat). A long cumulative AVWAP is nearly flat late in a base, so requiring
+    // a strictly rising slope here would miss healthy "holding above" setups.
+    if (st.priceAbove && st.slope !== "falling" && st.slope !== "unknown") avwapBullish = true;
     if (avwapCross(candles, idx, 5).event === "reclaim") avwapReclaim = true;
   }
   const keyState = avwapState(candles, anchor.index);

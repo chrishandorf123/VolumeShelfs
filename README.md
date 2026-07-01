@@ -229,11 +229,23 @@ trade-plan levels, plus:
 
 ### Chart controls & the Guide
 
-The chart supports **scroll to zoom**, **drag to pan**, and **double-click to
-reset** — the price axis auto-fits whatever range is visible. Every jargon term
-(break-even supply/demand, POC, value area, AVWAP, gaps, gates, R:R, …) is
-explained in plain English in the **Guide** (the *? Guide* button, top-right);
-badges and headings are click-to-define and jump straight to the right entry.
+- **Timeframe buttons** (1M / 3M / 6M / 1Y / All) set how much history is shown;
+  the chart defaults to 6M so candles are legible instead of a squashed year.
+  You can also **scroll to zoom**, **drag to pan**, and **double-click to reset**
+  — the price axis auto-fits whatever is visible.
+- The **Guide** (*? Guide* button, top-right) explains every jargon term
+  (break-even supply/demand, POC, value area, AVWAP, gaps, gates, R:R, …) in
+  plain English; badges and headings are click-to-define and jump to the entry.
+
+### The Anchor Coach (Explore tab)
+
+Instead of silently auto-picking, the Explore tab **coaches** you on where to
+anchor: it finds the major swing low and swing high, marks them on the chart,
+and tells you which to use *and why* — e.g. "price is holding above the $10 swing
+low, anchor there to see support," or "price has pulled off the $28 high, anchor
+there to see overhead supply." One click on **Swing low / Swing high** applies
+it. The Explore tab also shows the same plain-English **verdict** for the loaded
+symbol (relative strength is marked *unknown* there, since it has no benchmark).
 
 > The bundled demo universe is synthetic, so gate passes vary. A pullback-from-a-
 > high like the ASST archetype is correctly recognized as the *ideal shelf/anchor

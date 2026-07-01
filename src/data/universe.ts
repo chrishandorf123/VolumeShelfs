@@ -106,6 +106,16 @@ const ARCHETYPES: Array<{ ticker: string; build: () => Candle[] }> = [
   // Steady compounders with a recent base.
   { ticker: "GRND", build: () => leader(120, 28, 0.7) },
   { ticker: "TREN", build: () => leader(133, 48, 0.95) },
+  // PRIME: a clean BUY-THE-DIP — strong uptrend, heavy overhead POC, then a
+  // shallow pullback to a tight fat shelf that still sits above a rising AVWAP,
+  // with room up to the POC/value-area (good reward-to-risk).
+  { ticker: "PRIME", build: () => buildPhasedSeries(202, 18, [
+      { bars: 60, drift: 0.0, vol: 0.015, volume: 2_500_000 }, // base at the low (anchor)
+      { bars: 80, drift: 0.0112, vol: 0.018, volume: 1_600_000 }, // thin run-up (gap zone)
+      { bars: 60, drift: 0.0004, vol: 0.012, volume: 6_500_000 }, // heavy shelf ~44 (target)
+      { bars: 20, drift: -0.009, vol: 0.014, volume: 2_800_000 }, // fast pullback through the gap
+      { bars: 32, drift: 0.0004, vol: 0.007, volume: 5_500_000 }, // tight fat support shelf at price
+    ]) },
   // ASST-style pullback-from-a-high into a fat volume shelf (the reference
   // "ideal" anchor case): pivot high, decline, rally, then a heavy base the
   // price has fallen into. Anchored from the high, the shelf sits at price.

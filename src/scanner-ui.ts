@@ -18,6 +18,7 @@ import { formatPrice, formatVolume } from "./chart/scale";
 import { PROVIDERS, getProvider, type Interval } from "./data";
 import { buildDemoBenchmark, buildDemoUniverse } from "./data/universe";
 import { GATE_GLOSSARY } from "./glossary";
+import { recoPanelHtml } from "./reco-view";
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -118,6 +119,21 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
   };
   els.scanProvider.addEventListener("change", syncProviderKey);
   syncProviderKey();
+
+  // ---- detail-chart timeframe bar ---------------------------------------
+  const tfBarScan = $("tfBarScan");
+  const activeScanTf = (): number | null => {
+    const btn = tfBarScan.querySelector<HTMLButtonElement>(".tf.active");
+    const bars = btn ? Number(btn.dataset.bars) : 126;
+    return bars > 0 ? bars : null;
+  };
+  tfBarScan.querySelectorAll<HTMLButtonElement>(".tf").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      tfBarScan.querySelectorAll(".tf").forEach((b) => b.classList.toggle("active", b === btn));
+      const bars = Number(btn.dataset.bars);
+      chart?.setVisibleCount(bars > 0 ? bars : null);
+    });
+  });
 
   // ---- universe source toggle -------------------------------------------
   els.uniSource.querySelectorAll<HTMLButtonElement>(".seg-btn").forEach((btn) => {
@@ -291,23 +307,14 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     if (!chart) chart = new VolumeShelfsChart($<HTMLCanvasElement>("scanChart"));
     chart.setModel(buildChartModel(r));
     chart.resize();
+    chart.setVisibleCount(activeScanTf());
 
     els.detailPanels.innerHTML =
       recoPanel(r) + mainPlayPanel(r) + avwapPanel(r) + gatesPanel(r) + tradePlanPanel(r) + checklistPanel(r);
   }
 
   function recoPanel(r: ScanResult): string {
-    const reco = recommend(recoContextFromScan(r), buildTradePlan(r));
-    const reasons = reco.reasoning.map((x) => `<li>${escapeHtml(x)}</li>`).join("");
-    return `<div class="panel reco reco-${reco.verdict}">
-      <div class="reco-head">
-        <span class="reco-verdict" data-glossary="verdict" title="What do the verdicts mean? Click to learn">${reco.label}</span>
-        <span class="reco-conf">${reco.confidence} confidence</span>
-      </div>
-      <p class="reco-headline">${escapeHtml(reco.headline)}</p>
-      <ul class="reco-why">${reasons}</ul>
-      <p class="reco-note">Educational tool, not financial advice — always confirm on your own chart.</p>
-    </div>`;
+    return recoPanelHtml(recommend(recoContextFromScan(r), buildTradePlan(r)));
   }
 
   function mainPlayPanel(r: ScanResult): string {

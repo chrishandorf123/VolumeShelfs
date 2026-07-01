@@ -93,10 +93,20 @@
 
       <main class="workspace">
         <div class="chart-wrap">
+          <div class="tf-bar" id="tfBarExplore" role="group" aria-label="Timeframe">
+            <span class="tf-label">Timeframe</span>
+            <button class="tf" data-bars="21">1M</button>
+            <button class="tf" data-bars="63">3M</button>
+            <button class="tf active" data-bars="126">6M</button>
+            <button class="tf" data-bars="252">1Y</button>
+            <button class="tf" data-bars="0">All</button>
+          </div>
           <canvas id="chart"></canvas>
-          <div class="hint">Click a candle to anchor · scroll to zoom · drag to pan · double-click to reset</div>
+          <div class="hint">Pick a timeframe above · scroll to zoom · drag to pan · double-click to reset</div>
         </div>
         <aside class="sidebar" id="sidebar">
+          <div id="anchorCoach"></div>
+          <div id="exploreReco"></div>
           <div class="panel">
             <h2>Summary</h2>
             <div id="summary" class="summary"></div>
@@ -187,6 +197,13 @@
               <p class="muted">Click a row to load its chart, gates, trade plan and confirmation checklist.</p>
             </div>
             <div class="chart-wrap detail-chart">
+              <div class="tf-bar" id="tfBarScan" role="group" aria-label="Timeframe">
+                <button class="tf" data-bars="21">1M</button>
+                <button class="tf" data-bars="63">3M</button>
+                <button class="tf active" data-bars="126">6M</button>
+                <button class="tf" data-bars="252">1Y</button>
+                <button class="tf" data-bars="0">All</button>
+              </div>
               <canvas id="scanChart"></canvas>
             </div>
             <div class="detail-panels" id="detailPanels"></div>
