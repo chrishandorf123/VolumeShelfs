@@ -15,3 +15,6 @@ export * from "./anchorCoach";
 export * from "./confirmation";
 export * from "./confluence";
 export * from "./thesis";
+export * from "./backtest";
+export * from "./probabilityTable";
+export * from "./decide";
