@@ -137,12 +137,18 @@ function syncProviderUi(): void {
 }
 
 // ---- anchor selection ------------------------------------------------------
-function pickAnchor(): number {
+function pickAnchor(coach: AnchorCoach | null): number {
   const c = state.candles;
   if (c.length === 0) return 0;
   if (state.anchorMode === "manual") {
     return Math.min(Math.max(state.anchorIndex, 0), c.length - 1);
   }
+  // In auto mode, use the coach's pivot — it's already searched within the
+  // selected timeframe window, so the anchor tracks the timeframe you picked.
+  if (coach) {
+    return state.anchorMode === "auto-high" ? coach.high.index : coach.low.index;
+  }
+  // Fallback (coach unavailable, e.g. too little history): whole-series pivot.
   if (state.anchorMode === "auto-high") {
     const minBars = 20;
     const lastAllowed = Math.max(0, c.length - minBars);
@@ -161,7 +167,10 @@ function recompute(): void {
     renderSidebar(null);
     return;
   }
-  if (state.anchorMode !== "manual") state.anchorIndex = pickAnchor();
+  // Search the coach's pivots within the on-screen timeframe, then anchor from
+  // one of them in auto mode — so "swing high / swing low" tracks the timeframe.
+  const coach = anchorCoach(c, activeTfBars() ?? c.length);
+  if (state.anchorMode !== "manual") state.anchorIndex = pickAnchor(coach);
   const anchor = Math.min(Math.max(state.anchorIndex, 0), c.length - 1);
   const currentPrice = c[c.length - 1].close;
 
@@ -175,7 +184,6 @@ function recompute(): void {
     gapThreshold: state.options.gapThreshold,
   });
 
-  const coach = anchorCoach(c);
   renderAnchorCoach(coach, anchor);
 
   const model: ChartModel = {
@@ -372,6 +380,8 @@ function initTimeframe(): void {
       els.tfBar.querySelectorAll(".tf").forEach((b) => b.classList.toggle("active", b === btn));
       const bars = Number(btn.dataset.bars);
       chart.setVisibleCount(bars > 0 ? bars : null);
+      // Re-anchor and refresh the coach for the newly selected window.
+      recompute();
     });
   });
 }

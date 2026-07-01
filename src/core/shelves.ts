@@ -10,6 +10,15 @@ import type {
 export interface DetectParams {
   shelfThreshold: number;
   gapThreshold: number;
+  /**
+   * How deep a valley between two shelves must dip to count as a volume gap,
+   * as a fraction of the *smaller bounding shelf* (not the global POC). This is
+   * the faithful Wujastyk "gap between shelves" rule: an air pocket is thin
+   * *relative to the shelves that wall it in*, even when the global POC (a
+   * distant, much fatter shelf) makes it look busy on an absolute scale.
+   * Defaults to 0.4.
+   */
+  gapWallFraction?: number;
 }
 
 interface Run {
@@ -18,11 +27,11 @@ interface Run {
 }
 
 /** Group consecutive indices for which `predicate` holds into runs. */
-function findRuns(bins: ProfileBin[], predicate: (b: ProfileBin) => boolean): Run[] {
+function findRuns(bins: ProfileBin[], predicate: (b: ProfileBin, i: number) => boolean): Run[] {
   const runs: Run[] = [];
   let current: Run | null = null;
   for (let i = 0; i < bins.length; i++) {
-    if (predicate(bins[i])) {
+    if (predicate(bins[i], i)) {
       if (current) current.highIndex = i;
       else current = { lowIndex: i, highIndex: i };
     } else if (current) {
@@ -89,12 +98,22 @@ export function detectShelves(
 }
 
 /**
- * Detect volume gaps — contiguous runs of low-volume rows (<= `gapThreshold`
- * of the POC). These are the "vacuums" through which price can travel quickly.
+ * Detect volume gaps — the low-volume "air pockets" price travels through fast.
  *
- * Gaps that sit at the very top or bottom edge of the profile are typically the
- * thin tails of the distribution rather than true interior vacuums, so a gap is
- * only reported when it is bounded by traded volume on at least one side.
+ * Two complementary rules, the way Wujastyk actually reads a profile:
+ *  1. Absolute vacuum — a run of rows at/below `gapThreshold` of the global POC
+ *     (a near-dead band anywhere in the profile).
+ *  2. Between-shelf valley — a valley between two shelf *peaks* (local maxima)
+ *     whose floor dips to at most `gapWallFraction` of the *smaller bounding
+ *     peak*. This is the case his charts show and an absolute-POC cutoff misses:
+ *     a genuine gap between two mid-height shelves, while a distant, much fatter
+ *     shelf owns the global POC and makes the area look "busy" on an absolute
+ *     scale. Using local peaks (not a % of the POC) means a lower shelf is still
+ *     recognised as a wall even when the top cluster dwarfs it.
+ *
+ * Overlapping detections are merged, so a valley that also clears the absolute
+ * cutoff is reported once. Gaps that span the entire profile (no traded volume
+ * anywhere) are ignored.
  */
 export function detectGaps(
   profile: AnchoredVolumeProfile,
@@ -102,13 +121,48 @@ export function detectGaps(
 ): VolumeGap[] {
   const { bins, poc, totalVolume } = profile;
   if (poc.volume <= 0) return [];
-  const cutoff = poc.volume * params.gapThreshold;
-  const runs = findRuns(bins, (b) => b.volume <= cutoff);
+  const n = bins.length;
 
+  // Mark every row that belongs to a gap by either rule, then coalesce.
+  const isGap = new Array<boolean>(n).fill(false);
+
+  // Rule 1: absolute vacuum vs the global POC.
+  const absCutoff = poc.volume * params.gapThreshold;
+  for (let i = 0; i < n; i++) {
+    if (bins[i].volume <= absCutoff) isGap[i] = true;
+  }
+
+  // Rule 2: relative valley between two shelf peaks (local maxima).
+  const wallFraction = params.gapWallFraction ?? 0.4;
+  // The visible band grows out from the valley floor until rows climb back near
+  // the shelves; keep it at least as wide as the vacuum itself.
+  const bandFraction = Math.max(0.6, wallFraction);
+  const mean = totalVolume / n;
+  const win = Math.max(2, Math.round(n * 0.06));
+  const peaks = shelfPeaks(bins, mean, win);
+  for (let k = 0; k + 1 < peaks.length; k++) {
+    const a = peaks[k];
+    const b = peaks[k + 1];
+    if (b - a < 2) continue; // adjacent peaks — no valley between them
+    let valleyIdx = a + 1;
+    for (let i = a + 1; i < b; i++) {
+      if (bins[i].volume < bins[valleyIdx].volume) valleyIdx = i;
+    }
+    const wall = Math.min(bins[a].volume, bins[b].volume);
+    if (bins[valleyIdx].volume > wall * wallFraction) continue; // not a real vacuum
+    const level = wall * bandFraction;
+    let lo = valleyIdx;
+    while (lo - 1 > a && bins[lo - 1].volume <= level) lo--;
+    let hi = valleyIdx;
+    while (hi + 1 < b && bins[hi + 1].volume <= level) hi++;
+    for (let i = lo; i <= hi; i++) isGap[i] = true;
+  }
+
+  const runs = findRuns(bins, (_b, i) => isGap[i]);
   const gaps: VolumeGap[] = [];
   for (const run of runs) {
     const touchesBottom = run.lowIndex === 0;
-    const touchesTop = run.highIndex === bins.length - 1;
+    const touchesTop = run.highIndex === n - 1;
     if (touchesBottom && touchesTop) continue; // entire profile is empty
     let volume = 0;
     for (let i = run.lowIndex; i <= run.highIndex; i++) volume += bins[i].volume;
@@ -122,6 +176,27 @@ export function detectGaps(
     });
   }
   return gaps;
+}
+
+/**
+ * Indices of shelf peaks — above-average rows that are a local maximum within
+ * ±`win` rows. These are the "walls" a volume gap sits between.
+ */
+function shelfPeaks(bins: ProfileBin[], peakFloor: number, win: number): number[] {
+  const n = bins.length;
+  const peaks: number[] = [];
+  for (let i = 0; i < n; i++) {
+    if (bins[i].volume < peakFloor) continue;
+    let isPeak = true;
+    for (let j = Math.max(0, i - win); j <= Math.min(n - 1, i + win); j++) {
+      if (bins[j].volume > bins[i].volume) {
+        isPeak = false;
+        break;
+      }
+    }
+    if (isPeak) peaks.push(i);
+  }
+  return peaks;
 }
 
 /** Mean volume per histogram row (`total_volume / N`). */

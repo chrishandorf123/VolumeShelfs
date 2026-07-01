@@ -1,5 +1,5 @@
 import type { Candle } from "./types";
-import { defaultAnchorHighIndex, defaultAnchorIndex, detectSwings } from "./swings";
+import { detectSwings } from "./swings";
 import { significance } from "./anchor";
 
 /** Look back roughly a year for the coach's pivots, not the whole history. */
@@ -39,25 +39,50 @@ function dateOf(t: number): string {
 
 const HIGH_MARGIN = 0.1;
 
-export function anchorCoach(candles: Candle[]): AnchorCoach | null {
+/** Index of the lowest low / highest high bar within [from, to] (inclusive). */
+function extremeIndex(candles: Candle[], from: number, to: number, kind: "low" | "high"): number {
+  let best = Math.max(0, Math.min(from, candles.length - 1));
+  for (let i = best; i <= to && i < candles.length; i++) {
+    const better =
+      kind === "low" ? candles[i].low < candles[best].low : candles[i].high > candles[best].high;
+    if (better) best = i;
+  }
+  return best;
+}
+
+/**
+ * @param window How many of the most-recent bars to search for the pivots.
+ *   Defaults to ~a year. Pass the selected timeframe's bar count so the coach
+ *   recommends a swing high/low from the window you're actually looking at.
+ */
+export function anchorCoach(candles: Candle[], window: number = COACH_WINDOW): AnchorCoach | null {
   const n = candles.length;
   if (n < 30) return null;
 
-  // Prefer the major swing pivots within the last ~year, so a long history (a
-  // former penny stock, an old IPO low) doesn't make the coach recommend an
-  // anchor from a price 30x away and 3 years ago. Fall back to the full-series
-  // major pivot when the recent window has none.
-  const from = Math.max(0, n - COACH_WINDOW);
-  const lastAllowed = n - 1 - 20;
+  // Search the major swing pivots within the selected window, so the coach's
+  // recommendation matches the timeframe on screen (and a long history — a
+  // former penny stock, an old IPO low — doesn't anchor from a price 30x away
+  // and 3 years ago). Fall back to the full-series major pivot when the window
+  // has none.
+  const win = Math.max(30, Math.min(window, n));
+  const from = Math.max(0, n - win);
+  // Reserve the freshest bars so the anchor has room to build structure, but
+  // scale the reserve to the window so a short timeframe still finds a pivot
+  // instead of an empty range.
+  const reserve = Math.min(20, Math.max(3, Math.floor(win / 5)));
+  const lastAllowed = n - 1 - reserve;
   const swings = detectSwings(candles, 5).filter((s) => s.index >= from && s.index <= lastAllowed);
   const lows = swings.filter((s) => s.kind === "low");
   const highs = swings.filter((s) => s.kind === "high");
+  // If the window has no clean fractal pivot (common on a short timeframe), fall
+  // back to the extreme bar *inside the window* — never the whole-series low —
+  // so the anchor always stays within the timeframe you selected.
   const lowIdx = lows.length
     ? lows.reduce((b, s) => (s.price < b.price ? s : b), lows[0]).index
-    : defaultAnchorIndex(candles, 5, 20);
+    : extremeIndex(candles, from, lastAllowed, "low");
   const highIdx = highs.length
     ? highs.reduce((b, s) => (s.price > b.price ? s : b), highs[0]).index
-    : defaultAnchorHighIndex(candles, 5, 20);
+    : extremeIndex(candles, from, lastAllowed, "high");
   const sigLow = significance(candles, lowIdx, "low");
   const sigHigh = significance(candles, highIdx, "high");
   // Bias toward the low (the common case); the high must clearly win.

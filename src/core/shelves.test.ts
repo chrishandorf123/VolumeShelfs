@@ -87,6 +87,29 @@ describe("detectGaps", () => {
     const gaps = detectGaps(profile, { shelfThreshold: 0.55, gapThreshold: 0.12 });
     expect(gaps).toHaveLength(0);
   });
+
+  it("finds the gap between two mid-height shelves the global POC would hide (the ASST case)", () => {
+    // A dominant top cluster owns the POC (180). A real lower shelf (~100) sits
+    // below a thin valley (~28). Relative to the POC the valley is ~15%+ — an
+    // absolute cutoff misses it — but relative to its bounding shelves it's a
+    // clear air pocket. Wujastyk's technique flags it; ours now must too.
+    const profile = profileFromVolumes([40, 90, 150, 180, 120, 50, 30, 28, 45, 100, 85, 35]);
+    const gaps = detectGaps(profile, { shelfThreshold: 0.55, gapThreshold: 0.12 });
+    expect(gaps.length).toBeGreaterThanOrEqual(1);
+    // The valley floor (row 7) must be inside a reported gap.
+    const covering = gaps.find((g) => g.lowIndex <= 7 && g.highIndex >= 7);
+    expect(covering).toBeDefined();
+    // And that gap sits between the top shelf (row 3) and the lower shelf (row 9).
+    expect(covering!.lowIndex).toBeGreaterThan(3);
+    expect(covering!.highIndex).toBeLessThan(9);
+  });
+
+  it("does not flag a shallow saddle between shelves as a gap", () => {
+    // The dip (row 2 = 80) only eases to ~80% of its walls — not an air pocket.
+    const profile = profileFromVolumes([100, 95, 80, 96, 100]);
+    const gaps = detectGaps(profile, { shelfThreshold: 0.55, gapThreshold: 0.12 });
+    expect(gaps).toHaveLength(0);
+  });
 });
 
 describe("analyzeProfile", () => {

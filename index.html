@@ -107,28 +107,18 @@
         <aside class="sidebar" id="sidebar">
           <div id="anchorCoach"></div>
           <div id="exploreReco"></div>
-          <div class="panel">
-            <h2>Summary</h2>
+          <details class="panel" open>
+            <summary>Summary</summary>
             <div id="summary" class="summary"></div>
-          </div>
-          <div class="panel">
-            <h2>Break-even zones &amp; shelves</h2>
+          </details>
+          <details class="panel" open>
+            <summary>Break-even zones &amp; shelves</summary>
             <div id="zones" class="zones"></div>
-          </div>
-          <div class="panel">
-            <h2>Volume gaps</h2>
+          </details>
+          <details class="panel">
+            <summary>Volume gaps</summary>
             <div id="gaps" class="gaps"></div>
-          </div>
-          <div class="panel legend">
-            <h2>Legend</h2>
-            <ul>
-              <li><span class="sw demand"></span> Break-even demand — shelf below price, acts as support</li>
-              <li><span class="sw supply"></span> Break-even supply — shelf above price, acts as resistance</li>
-              <li><span class="sw neutral"></span> Volume shelf at price</li>
-              <li><span class="sw gap"></span> Volume gap — thin liquidity, fast moves</li>
-              <li><span class="sw poc"></span> POC — point of control (highest-volume row)</li>
-            </ul>
-          </div>
+          </details>
         </aside>
       </main>
       </div>
