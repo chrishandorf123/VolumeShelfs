@@ -505,9 +505,16 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
   }
 
   function renderMonitor(rows: MonitorRow[], failed: number, total: number): void {
-    const day = rows[0]?.day ? ` · ${rows[0].day}` : "";
+    // Freshness: show the most recent print's timestamp + whether it's a live
+    // intraday quote or a prior close (market closed / no intraday feed).
+    const stamps = rows.map((r) => r.asOf || r.day || "").filter(Boolean).sort();
+    const latest = stamps[stamps.length - 1] ?? "";
+    const anyLive = rows.some((r) => r.live);
+    const freshness = latest
+      ? ` · ${anyLive ? "live" : "close"} ${latest}`
+      : "";
     els.monitorMeta.textContent = rows.length
-      ? `${rows.length}/${total} quoted${failed ? ` · ${failed} skipped` : ""}${day}`
+      ? `${rows.length}/${total} quoted${failed ? ` · ${failed} skipped` : ""}${freshness}`
       : "";
     if (rows.length === 0) {
       els.monitorBody.innerHTML = `<div class="empty">No quotes returned (check the key / rate limit).</div>`;
@@ -517,10 +524,12 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
       .map((r) => {
         const cls = r.status.toLowerCase();
         const chg = r.changePct >= 0 ? "pos" : "neg";
+        const asOf = r.asOf ? ` title="${r.live ? "live" : "prior close"} · as of ${escapeHtml(r.asOf)}"` : "";
+        const dot = r.live ? '<span class="mon-live" title="live intraday print">●</span> ' : "";
         return `<tr data-ticker="${r.symbol}" class="mon-row mon-${cls}">
           <td><span class="mon-badge mon-${cls}">${r.status}</span></td>
           <td class="tk">${r.symbol}</td>
-          <td>${formatPrice(r.price)}</td>
+          <td${asOf}>${dot}${formatPrice(r.price)}</td>
           <td class="${chg}">${fmtPct(r.changePct)}</td>
           <td>${monArrow(r.toEntry)}</td>
           <td>${monArrow(r.toStop)}</td>

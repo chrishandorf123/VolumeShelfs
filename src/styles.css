@@ -1597,3 +1597,8 @@ table.mon-table td.mon-note {
 .mon-row.mon-stopped {
   opacity: 0.72;
 }
+.mon-live {
+  color: var(--up);
+  font-size: 8px;
+  vertical-align: middle;
+}

@@ -29,6 +29,10 @@ export interface MonitorRow {
   toT1: number;
   /** Latest trading day the quote is for, if the provider reports it. */
   day?: string;
+  /** Timestamp of the print ("2026-07-01 15:55"), for intraday quotes. */
+  asOf?: string;
+  /** True when this is a live intraday print rather than a prior close. */
+  live: boolean;
   /** One-line plain-English read of the status. */
   note: string;
 }
@@ -80,6 +84,8 @@ export function monitorRow(quote: Quote, plan: TradePlan): MonitorRow {
     toStop,
     toT1,
     day: quote.day,
+    asOf: quote.asOf,
+    live: quote.live ?? false,
     note,
   };
 }

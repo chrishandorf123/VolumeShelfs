@@ -16,6 +16,10 @@ export interface Quote {
   changePct: number;
   /** Latest trading day (YYYY-MM-DD), when the provider reports it. */
   day?: string;
+  /** Timestamp of the print ("2026-07-01 15:55"), when it's an intraday quote. */
+  asOf?: string;
+  /** True when the price is an intraday print (today's live), not a prior close. */
+  live?: boolean;
 }
 
 /**
