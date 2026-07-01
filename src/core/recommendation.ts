@@ -22,6 +22,8 @@ export interface RecoContext {
   avwapReclaim: boolean;
   /** The key AVWAP level price must hold/reclaim (for messaging). */
   avwapValue: number;
+  /** The 200-day moving average — the overhead level to reclaim in a downtrend. */
+  ma200: number;
   /** A fat volume shelf sits at price (support). */
   hasShelfAtPrice: boolean;
   idealScore: number;
@@ -70,9 +72,15 @@ export function recommend(ctx: RecoContext, plan: TradePlan | null): Recommendat
     // Below the 200-day average — the bigger trend is down.
     if (structure) {
       verdict = "watch";
-      reasoning.push("It's below its 200-day average, so the bigger trend is still down — don't try to catch it here.");
+      const ma = Number.isFinite(ctx.ma200) ? ` (${money(ctx.ma200)})` : "";
+      reasoning.push(`It's below its 200-day average${ma}, so the bigger trend is still down — don't try to catch it here.`);
       reasoning.push("But there's a real volume shelf at price, so it's worth watching.");
-      reasoning.push(`Only act if it climbs back above the 200-day line AND closes above its AVWAP (${money(ctx.avwapValue)}).`);
+      // Only cite the AVWAP as a "reclaim" level when price is actually below it.
+      if (Number.isFinite(ctx.avwapValue) && ctx.price < ctx.avwapValue) {
+        reasoning.push(`Only act once it closes back above its AVWAP (${money(ctx.avwapValue)}) and reclaims the 200-day line${ma}.`);
+      } else {
+        reasoning.push(`Only act once it climbs back above the 200-day line${ma} and the trend turns up.`);
+      }
     } else {
       verdict = "avoid";
       reasoning.push("Downtrend with no clear support shelf at price — there's nothing to lean on.");
@@ -105,10 +113,15 @@ export function recommend(ctx: RecoContext, plan: TradePlan | null): Recommendat
       else if (ctx.rsOk === false) reasoning.push("Note: it's lagging the market a bit — leaders are cleaner.");
     }
   } else {
-    // Structure is there, but price is below its AVWAP — not yet confirmed.
+    // Structure is there, but the AVWAP isn't confirming yet.
     verdict = "wait";
-    reasoning.push(`The setup is here (volume shelf${ctx.gapActive ? " + gap" : ""}), but price is still below its key AVWAP (${money(ctx.avwapValue)}).`);
-    reasoning.push("Wait for a daily close back above that line before buying — that's the trigger.");
+    if (Number.isFinite(ctx.avwapValue) && ctx.price < ctx.avwapValue) {
+      reasoning.push(`The setup is here (volume shelf${ctx.gapActive ? " + gap" : ""}), but price is still below its key AVWAP (${money(ctx.avwapValue)}).`);
+      reasoning.push("Wait for a daily close back above that line before buying — that's the trigger.");
+    } else {
+      reasoning.push(`The setup is here (volume shelf${ctx.gapActive ? " + gap" : ""}), but the AVWAP isn't confirming yet (it's flat or turning down).`);
+      reasoning.push("Wait for price to hold above a rising AVWAP before buying — that's the trigger.");
+    }
   }
 
   const headline = buildHeadline(verdict, ctx, plan);
@@ -126,7 +139,13 @@ function buildHeadline(verdict: Verdict, ctx: RecoContext, plan: TradePlan | nul
     const stop = plan ? `, then stop ${money(plan.stop)}` : "";
     return `No trade yet. Buy only on a close above ${trigger}${stop}.`;
   }
-  if (verdict === "watch") return `No trade yet. Add to a watchlist and wait for it to reclaim ${money(ctx.avwapValue)}.`;
+  if (verdict === "watch") {
+    if (Number.isFinite(ctx.avwapValue) && ctx.price < ctx.avwapValue)
+      return `No trade yet — wait for a close above its AVWAP (${money(ctx.avwapValue)}).`;
+    if (Number.isFinite(ctx.ma200) && ctx.price < ctx.ma200)
+      return `No trade yet — wait for a close back above the 200-day average (${money(ctx.ma200)}).`;
+    return "No trade yet — add to a watchlist and wait for the trend to turn up.";
+  }
   return "Skip this one — it isn't a clean setup.";
 }
 
@@ -153,6 +172,7 @@ export function recoContextFromScan(result: ScanResult): RecoContext {
     avwapBullish: result.avwap.bullish,
     avwapReclaim: result.avwap.reclaim,
     avwapValue: result.avwap.keyState.value,
+    ma200: result.ma200,
     hasShelfAtPrice: result.gates.shelf.pass || result.idealScore >= 0.4,
     idealScore: result.idealScore,
     gapActive: result.gates.gap.pass,

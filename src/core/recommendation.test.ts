@@ -10,6 +10,7 @@ const base: RecoContext = {
   avwapBullish: true,
   avwapReclaim: false,
   avwapValue: 19,
+  ma200: 22,
   hasShelfAtPrice: true,
   idealScore: 0.7,
   gapActive: false,
@@ -61,6 +62,18 @@ describe("recommend", () => {
     const r = recommend({ ...base, trendOk: false }, plan);
     expect(r.verdict).toBe("watch");
     expect(r.reasoning.join(" ")).toMatch(/200-day/);
+  });
+
+  it("never tells you to reclaim a level BELOW the current price", () => {
+    // Downtrend: price 10.91, AVWAP 9.37 (below price), 200MA 13 (above price).
+    const r = recommend(
+      { ...base, trendOk: false, price: 10.91, avwapValue: 9.37, ma200: 13 },
+      plan,
+    );
+    expect(r.verdict).toBe("watch");
+    expect(r.headline).not.toContain("9.37"); // don't cite a below-price AVWAP
+    expect(r.headline).toContain("13"); // cite the 200-day, which is above price
+    expect(r.reasoning.join(" ")).not.toMatch(/above its AVWAP \(\$9\.37\)/);
   });
 
   it("says AVOID when illiquid", () => {

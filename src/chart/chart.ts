@@ -58,7 +58,12 @@ export interface ChartModel {
 }
 
 const MARGIN = { top: 14, right: 64, bottom: 24, left: 8 };
-const PROFILE_MAX_FRAC = 0.42;
+/** Fraction of the plot reserved on the right for the volume-profile gutter. */
+const PROFILE_GUTTER_FRAC = 0.26;
+/** Extra whitespace between the newest candle and the profile ("a few months"). */
+const FUTURE_PAD_FRAC = 0.06;
+/** Max width of a profile bar within the gutter. */
+const PROFILE_MAX_FRAC = 0.24;
 
 /**
  * Canvas renderer for the anchored volume profile. Owns its own pointer
@@ -186,7 +191,11 @@ export class VolumeShelfsChart {
     const pad = (high - low) * 0.04 || 1;
     const scale = this.model?.profile?.scale ?? "log";
     this.priceAxis = new PriceAxis(Math.max(low - pad, low * 0.98), high + pad, scale, this.plot);
-    this.indexAxis = new IndexAxis(start, visibleCount, this.plot);
+    // Candles occupy the left of the plot; the right is a gutter for the volume
+    // profile plus a little future whitespace, so the newest bars are never
+    // hidden behind the profile and you can see where price sits in the gaps.
+    const candleAreaWidth = this.plot.width * (1 - PROFILE_GUTTER_FRAC - FUTURE_PAD_FRAC);
+    this.indexAxis = new IndexAxis(start, visibleCount, this.plot.x, candleAreaWidth);
   }
 
   // ---- rendering ----------------------------------------------------------

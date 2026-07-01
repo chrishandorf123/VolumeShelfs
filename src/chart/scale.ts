@@ -61,19 +61,22 @@ export class IndexAxis {
   constructor(
     readonly start: number,
     readonly visibleCount: number,
-    private readonly plot: Rect,
+    private readonly originX: number,
+    /** Width of the candle area (may be less than the plot width to leave a
+     * right-hand gutter for the volume profile + some future whitespace). */
+    width: number,
   ) {
-    this.step = visibleCount > 0 ? plot.width / visibleCount : plot.width;
+    this.step = visibleCount > 0 ? width / visibleCount : width;
   }
 
   /** Centre x of candle `i` (absolute index). */
   x(i: number): number {
-    return this.plot.x + (i - this.start + 0.5) * this.step;
+    return this.originX + (i - this.start + 0.5) * this.step;
   }
 
   /** x pixel -> nearest candle index, clamped to the visible range. */
   index(x: number): number {
-    const i = this.start + Math.floor((x - this.plot.x) / (this.step || 1));
+    const i = this.start + Math.floor((x - this.originX) / (this.step || 1));
     return Math.min(Math.max(i, this.start), this.start + this.visibleCount - 1);
   }
 

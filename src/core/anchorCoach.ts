@@ -1,6 +1,9 @@
 import type { Candle } from "./types";
-import { defaultAnchorHighIndex, defaultAnchorIndex } from "./swings";
+import { defaultAnchorHighIndex, defaultAnchorIndex, detectSwings } from "./swings";
 import { significance } from "./anchor";
+
+/** Look back roughly a year for the coach's pivots, not the whole history. */
+const COACH_WINDOW = 252;
 
 /**
  * The Anchor Coach: instead of silently auto-picking, tell the user WHERE and
@@ -39,8 +42,22 @@ const HIGH_MARGIN = 0.1;
 export function anchorCoach(candles: Candle[]): AnchorCoach | null {
   const n = candles.length;
   if (n < 30) return null;
-  const lowIdx = defaultAnchorIndex(candles, 5, 20);
-  const highIdx = defaultAnchorHighIndex(candles, 5, 20);
+
+  // Prefer the major swing pivots within the last ~year, so a long history (a
+  // former penny stock, an old IPO low) doesn't make the coach recommend an
+  // anchor from a price 30x away and 3 years ago. Fall back to the full-series
+  // major pivot when the recent window has none.
+  const from = Math.max(0, n - COACH_WINDOW);
+  const lastAllowed = n - 1 - 20;
+  const swings = detectSwings(candles, 5).filter((s) => s.index >= from && s.index <= lastAllowed);
+  const lows = swings.filter((s) => s.kind === "low");
+  const highs = swings.filter((s) => s.kind === "high");
+  const lowIdx = lows.length
+    ? lows.reduce((b, s) => (s.price < b.price ? s : b), lows[0]).index
+    : defaultAnchorIndex(candles, 5, 20);
+  const highIdx = highs.length
+    ? highs.reduce((b, s) => (s.price > b.price ? s : b), highs[0]).index
+    : defaultAnchorHighIndex(candles, 5, 20);
   const sigLow = significance(candles, lowIdx, "low");
   const sigHigh = significance(candles, highIdx, "high");
   // Bias toward the low (the common case); the high must clearly win.
