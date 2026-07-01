@@ -28,6 +28,7 @@ import { initScanner } from "./scanner-ui";
 import { initGuide } from "./guide";
 import { recoPanelHtml } from "./reco-view";
 import { confirmationPanelHtml, confluencePanelHtml, thesisPanelHtml } from "./thesis-view";
+import { tradePlanPanelHtml, wirePositionSizer } from "./trade-view";
 
 // ---- DOM helpers -----------------------------------------------------------
 const $ = <T extends HTMLElement>(id: string): T => {
@@ -450,12 +451,15 @@ function renderExploreReco(r: ScanResult | null): void {
     els.exploreReco.innerHTML = "";
     return;
   }
-  const reco = recommend({ ...recoContextFromScan(r), rsOk: null }, buildTradePlan(r));
+  const plan = buildTradePlan(r);
+  const reco = recommend({ ...recoContextFromScan(r), rsOk: null }, plan);
   els.exploreReco.innerHTML =
     recoPanelHtml(reco) +
     confluencePanelHtml(r.confluence) +
     thesisPanelHtml(buildThesis(r)) +
-    confirmationPanelHtml(r.confirmation);
+    confirmationPanelHtml(r.confirmation) +
+    tradePlanPanelHtml(plan);
+  wirePositionSizer(els.exploreReco, plan);
 }
 
 /** AVWAP line + ±1σ bands, the pinch AVWAPs, 50/200 MA and the trade levels. */

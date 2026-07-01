@@ -25,6 +25,7 @@ import { buildDemoBenchmark, buildDemoUniverse } from "./data/universe";
 import { GATE_GLOSSARY } from "./glossary";
 import { recoPanelHtml } from "./reco-view";
 import { confirmationPanelHtml, confluencePanelHtml, thesisPanelHtml } from "./thesis-view";
+import { tradePlanPanelHtml, wirePositionSizer } from "./trade-view";
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -385,7 +386,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
       avwapPanel(r) +
       confirmationPanelHtml(r.confirmation) +
       gatesPanel(r) +
-      tradePlanPanel(r) +
+      tradePlanPanelHtml(buildTradePlan(r)) +
       checklistPanel(r);
 
     // Wire the "try the other anchor" toggle.
@@ -402,25 +403,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     });
 
     // Wire the risk-based position sizer (recompute shares live, persist inputs).
-    const acctIn = els.detailPanels.querySelector<HTMLInputElement>("#psAcct");
-    const riskIn = els.detailPanels.querySelector<HTMLInputElement>("#psRisk");
-    if (acctIn && riskIn) {
-      const recalc = () => {
-        const acct = Math.max(0, Number(acctIn.value) || 0);
-        const risk = Math.max(0, Number(riskIn.value) || 0);
-        localStorage.setItem("vs.acct", String(acct));
-        localStorage.setItem("vs.riskpref", String(risk));
-        const plan = buildTradePlan(r);
-        const perShare = plan ? plan.entry - plan.stop : 0;
-        const shares = perShare > 0 ? Math.floor((acct * risk) / 100 / perShare) : 0;
-        const sh = els.detailPanels.querySelector("#psShares");
-        const dl = els.detailPanels.querySelector("#psDollar");
-        if (sh) sh.textContent = String(shares);
-        if (dl) dl.textContent = (shares * perShare).toFixed(0);
-      };
-      acctIn.addEventListener("input", recalc);
-      riskIn.addEventListener("input", recalc);
-    }
+    wirePositionSizer(els.detailPanels, buildTradePlan(r));
   }
 
   function anchorPanel(r: ScanResult): string {
@@ -558,35 +541,6 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
         <span class="gd muted">${escapeHtml(gate.detail)}</span></div>`;
     }).join("");
     return `<div class="panel"><h2>Gates (${r.gatesPassed}/7)</h2>${rows}</div>`;
-  }
-
-  function tradePlanPanel(r: ScanResult): string {
-    const plan = buildTradePlan(r);
-    if (!plan) return `<div class="panel"><h2>Trade plan</h2><div class="empty">No support shelf — not actionable as a long.</div></div>`;
-    const lvl = (k: string, v: number, cls = "") => `<div class="stat"><span class="k">${k}</span><span class="v ${cls}">${formatPrice(v)}</span></div>`;
-    const notes = plan.notes.map((n) => `<li>${escapeHtml(n)}</li>`).join("");
-    const t1Label = plan.isGapPlay ? "T1 (far shelf)" : "T1 (POC/HVN)";
-    const t2Label = plan.isGapPlay ? "T2 (beyond)" : "T2 (VAH+)";
-    const acct = Number(localStorage.getItem("vs.acct")) || 10000;
-    const riskPref = Number(localStorage.getItem("vs.riskpref")) || 1;
-    const perShare = plan.entry - plan.stop;
-    const shares = perShare > 0 ? Math.floor((acct * riskPref) / 100 / perShare) : 0;
-    return `<div class="panel"><h2>Trade plan${plan.isGapPlay ? " · gap play" : ""}</h2>
-      <div class="summary">
-        ${lvl("Entry (reclaim)", plan.entry)}
-        ${lvl("Stop (shelf low)", plan.stop, "neg")}
-        ${lvl(t1Label, plan.t1, "pos")}
-        ${lvl(t2Label, plan.t2, "pos")}
-        <div class="stat"><span class="k">Risk</span><span class="v">${(plan.riskPct * 100).toFixed(1)}%</span></div>
-        <div class="stat"><span class="k">R to T1 / T2</span><span class="v">${plan.rMultipleT1.toFixed(1)}R / ${plan.rMultipleT2.toFixed(1)}R</span></div>
-      </div>
-      <div class="possize">
-        <span class="k" data-glossary="r-multiple" title="Risk-based sizing. Click to learn about R">Size <span class="muted">(risk-based)</span></span>
-        <label>Acct $ <input id="psAcct" type="number" min="0" step="100" value="${acct}" /></label>
-        <label>Risk % <input id="psRisk" type="number" min="0" step="0.25" value="${riskPref}" /></label>
-        <span class="ps-out">→ <b id="psShares">${shares}</b> sh · $<span id="psDollar">${(shares * perShare).toFixed(0)}</span> risk</span>
-      </div>
-      <ul class="notes">${notes}</ul></div>`;
   }
 
   function checklistPanel(r: ScanResult): string {
