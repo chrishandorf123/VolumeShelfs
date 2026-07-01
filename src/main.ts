@@ -4,6 +4,8 @@ import {
   DEFAULT_SCAN_CONFIG,
   analyzeProfile,
   anchorCoach,
+  anchoredVwapBands,
+  anchoredVwapSeries,
   buildThesis,
   buildTradePlan,
   computeAnchoredProfile,
@@ -12,12 +14,14 @@ import {
   recommend,
   recoContextFromScan,
   scanTicker,
+  smaSeries,
   type AnalysisOptions,
   type AnchorCoach,
   type Candle,
   type ChosenAnchor,
+  type ScanResult,
 } from "./core";
-import { VolumeShelfsChart, type ChartModel } from "./chart/chart";
+import { VolumeShelfsChart, type ChartModel, type ChartOverlays } from "./chart/chart";
 import { PROVIDERS, getProvider, parseCsv, type Interval } from "./data";
 import { formatPrice, formatVolume } from "./chart/scale";
 import { initScanner } from "./scanner-ui";
@@ -189,6 +193,17 @@ function recompute(): void {
 
   renderAnchorCoach(coach, anchor);
 
+  // Run the scan once, on the SAME anchor as the chart, and drive both the
+  // verdict/thesis panels and the chart overlays (AVWAP, bands, MAs, levels)
+  // from it — so nothing on screen can contradict anything else.
+  const anchoredFromHigh =
+    state.anchorMode === "auto-high"
+      ? true
+      : state.anchorMode === "auto-low"
+        ? false
+        : isHighAnchorBar(c, anchor);
+  const scan = runExploreScan(c, anchor, anchoredFromHigh);
+
   const model: ChartModel = {
     candles: c,
     profile,
@@ -207,19 +222,11 @@ function recompute(): void {
           { index: coach.high.index, price: coach.high.price, kind: "high", recommended: coach.high.recommended },
         ]
       : undefined,
+    overlays: scan ? buildExploreOverlays(c, anchor, scan) : undefined,
   };
   chart.setModel(model);
   renderSidebar(model);
-
-  // Keep the verdict / bull-&-bear thesis / confirmation on the SAME anchor as
-  // the chart, so their levels can never contradict what you're looking at.
-  const anchoredFromHigh =
-    state.anchorMode === "auto-high"
-      ? true
-      : state.anchorMode === "auto-low"
-        ? false
-        : isHighAnchorBar(c, anchor);
-  updateExploreReco(anchor, anchoredFromHigh);
+  renderExploreReco(scan);
 }
 
 /** Render the interactive Anchor Coach: which pivot to anchor from, and why. */
@@ -417,17 +424,9 @@ function isHighAnchorBar(candles: Candle[], index: number, look = 20): boolean {
   return maxH - bar.high <= bar.low - minL; // closer to the top => a high anchor
 }
 
-/**
- * Plain-English verdict + bull/bear thesis + confirmation for the loaded symbol,
- * computed from the SAME anchor the chart is using (RS unknown without a
- * benchmark). Kept in lock-step with the chart so the levels never contradict it.
- */
-function updateExploreReco(anchorIndex: number, anchoredFromHigh: boolean): void {
-  const c = state.candles;
-  if (c.length < 20) {
-    els.exploreReco.innerHTML = "";
-    return;
-  }
+/** Run the single-symbol scan on the chart's anchor (RS unknown, no benchmark). */
+function runExploreScan(c: Candle[], anchorIndex: number, anchoredFromHigh: boolean): ScanResult | null {
+  if (c.length < 20) return null;
   try {
     const cfg = {
       ...DEFAULT_SCAN_CONFIG,
@@ -439,16 +438,54 @@ function updateExploreReco(anchorIndex: number, anchoredFromHigh: boolean): void
       index: Math.min(Math.max(anchorIndex, 0), c.length - 1),
       label: anchoredFromHigh ? "swing-high" : "swing-low",
     };
-    const r = scanTicker({ ticker: "symbol", candles: c }, c, cfg, forced);
-    const reco = recommend({ ...recoContextFromScan(r), rsOk: null }, buildTradePlan(r));
-    els.exploreReco.innerHTML =
-      recoPanelHtml(reco) +
-      confluencePanelHtml(r.confluence) +
-      thesisPanelHtml(buildThesis(r)) +
-      confirmationPanelHtml(r.confirmation);
+    return scanTicker({ ticker: "symbol", candles: c }, c, cfg, forced);
   } catch {
-    els.exploreReco.innerHTML = "";
+    return null;
   }
+}
+
+/** Render the verdict + confluence + bull/bear thesis + confirmation panels. */
+function renderExploreReco(r: ScanResult | null): void {
+  if (!r) {
+    els.exploreReco.innerHTML = "";
+    return;
+  }
+  const reco = recommend({ ...recoContextFromScan(r), rsOk: null }, buildTradePlan(r));
+  els.exploreReco.innerHTML =
+    recoPanelHtml(reco) +
+    confluencePanelHtml(r.confluence) +
+    thesisPanelHtml(buildThesis(r)) +
+    confirmationPanelHtml(r.confirmation);
+}
+
+/** AVWAP line + ±1σ bands, the pinch AVWAPs, 50/200 MA and the trade levels. */
+function buildExploreOverlays(c: Candle[], anchorIndex: number, r: ScanResult): ChartOverlays {
+  const closes = c.map((x) => x.close);
+  const bands = anchoredVwapBands(c, anchorIndex, 1);
+  const series = [
+    { label: "+1σ", values: bands.upper, color: "rgba(91,141,239,0.25)", dashed: true },
+    { label: "−1σ", values: bands.lower, color: "rgba(91,141,239,0.25)", dashed: true },
+    { label: "AVWAP", values: bands.vwap, color: "#5b8def" },
+    { label: "50MA", values: smaSeries(closes, 50), color: "rgba(139,149,167,0.85)" },
+    { label: "200MA", values: smaSeries(closes, 200), color: "rgba(239,83,80,0.65)" },
+  ];
+  // Add only the AVWAPs that form the pinch (confluence), to avoid clutter.
+  const pinchLabels = new Set(r.pinch?.members.map((m) => m.label) ?? []);
+  for (const a of r.avwapAnchors) {
+    if (pinchLabels.has(a.label)) {
+      series.push({ label: `AVWAP ${a.label}`, values: anchoredVwapSeries(c, a.index), color: "#c792ea" });
+    }
+  }
+  const plan = buildTradePlan(r);
+  const levels = plan
+    ? [
+        { label: `Entry ${formatPrice(plan.entry)}`, price: plan.entry, color: "#5b8def", dashed: true },
+        { label: `Stop ${formatPrice(plan.stop)}`, price: plan.stop, color: "#ef5350", dashed: true },
+        { label: `T1 ${formatPrice(plan.t1)}`, price: plan.t1, color: "#26a69a", dashed: true },
+        { label: `T2 ${formatPrice(plan.t2)}`, price: plan.t2, color: "#26a69a", dashed: true },
+      ]
+    : [];
+  return { series, levels };
 }
 
 /** Run after a new series loads: apply the chosen timeframe (verdict already rendered by recompute). */
