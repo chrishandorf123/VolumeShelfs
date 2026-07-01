@@ -72,12 +72,15 @@ function meanVolume(candles: Candle[], lookback: number): number {
 /** Higher-timeframe (weekly) uptrend: close above a rising ~10-week average. */
 function weeklyUptrend(candles: Candle[]): boolean {
   const wk = resampleWeekly(candles);
-  if (wk.length < 12) return false;
+  // Need enough weeks that the 10-week MA slope (lookback 4) is actually defined
+  // — otherwise slopeOf reads a NaN and returns "unknown", which would slip past
+  // a "!= falling" guard even while the MA is genuinely falling.
+  if (wk.length < 15) return false;
   const closes = wk.map((c) => c.close);
   const ma = smaLast(closes, 10);
-  const maSeries = smaSeries(closes, 10);
+  const slope = slopeOf(smaSeries(closes, 10), 4, 0.003);
   return (
-    Number.isFinite(ma) && wk[wk.length - 1].close > ma && slopeOf(maSeries, 4, 0.003) !== "falling"
+    Number.isFinite(ma) && wk[wk.length - 1].close > ma && (slope === "rising" || slope === "flat")
   );
 }
 
@@ -97,7 +100,15 @@ export function computeConfluence(inp: ConfluenceInputs): ConfluenceScore {
   const bands = anchoredVwapBands(candles, inp.anchorIndex, 1);
   const mean = bands.vwap[i];
   const sigma = Number.isFinite(bands.upper[i]) ? bands.upper[i] - bands.vwap[i] : NaN;
-  const distanceSD = sigma > 0 && Number.isFinite(mean) ? (price - mean) / sigma : 0;
+  // Guard against a degenerate window: when the anchor sits at (or right before)
+  // the last bar the variance is ~0, so a float artifact would blow distanceSD up
+  // to a nonsense value and trip a false chasing / not-extended read. Require a
+  // few bars of history and a meaningfully positive sigma, else treat as neutral.
+  const barsFromAnchor = i - inp.anchorIndex;
+  const distanceSD =
+    barsFromAnchor >= 10 && Number.isFinite(mean) && sigma > price * 5e-4
+      ? (price - mean) / sigma
+      : 0;
 
   // ---- volume conviction ----------------------------------------------------
   const avg20 = meanVolume(candles, 20);

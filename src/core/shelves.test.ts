@@ -43,6 +43,10 @@ describe("classifyZone", () => {
   it("is at-price when price sits inside the shelf", () => {
     expect(classifyZone(shelf, 15)).toBe("at-price");
   });
+  it("treats the exact shelf edges as at-price (consistent with nearestShelves)", () => {
+    expect(classifyZone(shelf, 20)).toBe("at-price"); // === priceHigh
+    expect(classifyZone(shelf, 10)).toBe("at-price"); // === priceLow
+  });
 });
 
 describe("detectShelves", () => {

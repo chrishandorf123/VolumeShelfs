@@ -57,6 +57,12 @@ describe("computeConfluence", () => {
     expect(cf.distanceSD).toBeGreaterThan(1);
   });
 
+  it("does not explode distanceSD when the anchor sits at the last bar", () => {
+    const cf = computeConfluence({ ...base, anchorIndex: base.candles.length - 2 });
+    expect(cf.distanceSD).toBe(0); // degenerate window → neutral, not a huge SD
+    expect(cf.chasing).toBe(false);
+  });
+
   it("marks reversion-into-strength for an uptrend on a shelf at/below the mean", () => {
     const cf = computeConfluence({
       ...base,

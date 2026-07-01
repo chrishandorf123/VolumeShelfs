@@ -56,8 +56,10 @@ export function classifyZone(
   shelf: Pick<VolumeShelf, "priceLow" | "priceHigh">,
   currentPrice: number,
 ): ZoneKind {
-  if (currentPrice >= shelf.priceHigh) return "break-even-demand";
-  if (currentPrice <= shelf.priceLow) return "break-even-supply";
+  // Strict inequalities so the exact edges (price === priceHigh / priceLow) are
+  // "at-price", consistent with nearestShelves treating those as inside.
+  if (currentPrice > shelf.priceHigh) return "break-even-demand";
+  if (currentPrice < shelf.priceLow) return "break-even-supply";
   return "at-price";
 }
 
