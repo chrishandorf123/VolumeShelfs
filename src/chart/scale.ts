@@ -50,26 +50,31 @@ export class PriceAxis {
   }
 }
 
-/** Maps candle indices to horizontal pixels within a plot rect. */
+/**
+ * Maps candle indices to horizontal pixels within a plot rect for a given
+ * viewport `[start, start+visibleCount)` — supports zoom/pan by rendering only
+ * the visible slice of candles across the full plot width.
+ */
 export class IndexAxis {
   readonly step: number;
 
   constructor(
-    readonly count: number,
+    readonly start: number,
+    readonly visibleCount: number,
     private readonly plot: Rect,
   ) {
-    this.step = count > 0 ? plot.width / count : plot.width;
+    this.step = visibleCount > 0 ? plot.width / visibleCount : plot.width;
   }
 
-  /** Centre x of candle `i`. */
+  /** Centre x of candle `i` (absolute index). */
   x(i: number): number {
-    return this.plot.x + (i + 0.5) * this.step;
+    return this.plot.x + (i - this.start + 0.5) * this.step;
   }
 
-  /** x pixel -> nearest candle index. */
+  /** x pixel -> nearest candle index, clamped to the visible range. */
   index(x: number): number {
-    const i = Math.floor((x - this.plot.x) / (this.step || 1));
-    return Math.min(Math.max(i, 0), Math.max(this.count - 1, 0));
+    const i = this.start + Math.floor((x - this.plot.x) / (this.step || 1));
+    return Math.min(Math.max(i, this.start), this.start + this.visibleCount - 1);
   }
 
   /** Candle body width in pixels, leaving a small gap. */

@@ -12,6 +12,7 @@ import { VolumeShelfsChart, type ChartModel } from "./chart/chart";
 import { PROVIDERS, getProvider, parseCsv, type Interval } from "./data";
 import { formatPrice, formatVolume } from "./chart/scale";
 import { initScanner } from "./scanner-ui";
+import { initGuide } from "./guide";
 
 // ---- DOM helpers -----------------------------------------------------------
 const $ = <T extends HTMLElement>(id: string): T => {
@@ -396,6 +397,7 @@ async function boot(): Promise<void> {
   initProviders();
   initControls();
   initTabs();
+  initGuide();
   chart.resize();
   // Initial render with offline demo data so the app is never blank.
   const demo = getProvider("sample")!;

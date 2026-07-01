@@ -1,0 +1,186 @@
+/**
+ * Plain-English glossary shown in the in-app Guide and as badge tooltips.
+ * Written for a complete beginner; wording is code-verified to match how the
+ * engine actually computes each concept (see src/core/*).
+ */
+export interface GlossaryEntry {
+  id: string;
+  term: string;
+  /** One-line tooltip. */
+  short: string;
+  /** A short plain-English explanation. */
+  plain: string;
+  /** Why it matters for a trade. */
+  why: string;
+}
+
+export const GLOSSARY: GlossaryEntry[] = [
+  {
+    id: "anchored-volume-profile",
+    term: "Anchored Volume Profile",
+    short: "A sideways bar chart of how much traded at each price, from a start bar you pick.",
+    plain:
+      "A volume profile is a sideways bar chart that shows how many shares traded at each price level, instead of over time. 'Anchored' means it only counts trading from a start bar you choose (like a big high or low) up to today. In this app it takes every candle from the anchor to now, splits the price range into 50 rows, and spreads each candle's volume across the rows it covers. The result shows exactly where lots of trading happened and where almost none did.",
+    why: "It tells you which price levels are real walls versus thin air, which is the whole basis for the entry, stop, and target.",
+  },
+  {
+    id: "anchor",
+    term: "Anchor point",
+    short: "The meaningful start bar you pin the profile to; it decides the whole story.",
+    plain:
+      "The anchor is the single bar where the profile starts counting volume, usually a major swing high, a swing low, the year's open, or an earnings date. Everything before it is ignored, so the picture depends entirely on where you anchor. This app picks the anchor automatically, choosing the significant high or low whose profile best explains where price is trading now. Move the anchor and the shelves, gaps, and fair price can all shift.",
+    why: "Where you anchor decides which levels show up, so a good anchor is the difference between a real setup and a mirage.",
+  },
+  {
+    id: "volume-shelf",
+    term: "Volume shelf (HVN)",
+    short: "A price zone where tons of shares traded, so it acts like a wall.",
+    plain:
+      "A volume shelf, also called a High-Volume Node (HVN), is a run of neighboring price rows that each traded well above the average row (in this app, at least 1.5 times the average, with two or more rows in a row). Because so many shares changed hands there, lots of people care about that price, so it tends to stop price like a floor or a ceiling. A shelf below the current price acts as support (buyers who bought there stop selling). A shelf above price acts as resistance (people stuck up there sell to escape).",
+    why: "Shelves are where you enter and set your stop, because price is far more likely to hold or reverse at a wall than in empty space.",
+  },
+  {
+    id: "volume-gap",
+    term: "Volume gap (LVN / air pocket)",
+    short: "A price zone where almost nothing traded, so price races through it.",
+    plain:
+      "A volume gap, also called a Low-Volume Node (LVN) or 'air pocket', is a run of price rows that traded very little (in this app, at or below 15% of the busiest row's volume). Because barely anyone bought or sold in that zone, there are few holders to slow price down, so it tends to travel through fast. The app ignores gaps at the very top or bottom edge of the profile, since those are just the thin tails, not true vacuums in the middle.",
+    why: "The fast travel through a gap is where the quick reward comes from, and its far edge often becomes your target.",
+  },
+  {
+    id: "poc",
+    term: "POC (Point of Control)",
+    short: "The single price where the most shares traded, a magnet for fair value.",
+    plain:
+      "The POC, or Point of Control, is the one price row with the highest volume in the whole profile. Because more trading happened there than anywhere else, the market has broadly agreed it is a fair price, so price tends to get pulled back toward it. In this app the POC is found by scanning every row and keeping the busiest one, and it also serves as the center that the Value Area grows out from.",
+    why: "If the POC sits above the current price it warns of overhead supply, and it often acts as the first target on the way up.",
+  },
+  {
+    id: "value-area",
+    term: "Value Area (VAH / VAL)",
+    short: "The price band around the POC that holds about 70% of all the volume.",
+    plain:
+      "The Value Area is the range of prices where most of the action happened, about 70% of all the volume in this app. It starts at the POC and grows outward one row at a time, always adding whichever neighboring row has more volume, until it captures that 70%. The top edge is the VAH (Value Area High) and the bottom edge is the VAL (Value Area Low). Prices inside this band are considered accepted, while prices outside it are where the market spent little time.",
+    why: "A shelf inside the Value Area is a stronger, more trusted level, and the VAH/VAL edges make natural targets and support lines.",
+  },
+  {
+    id: "break-even-demand",
+    term: "Break-even demand",
+    short: "A volume shelf below the current price that tends to act as support (a floor).",
+    plain:
+      "A volume shelf is a price band where a lot of shares changed hands, so it acts like a wall. When such a shelf sits below today's price, the app labels it break-even demand. The idea: people who bought down there are now back to about break-even, so they stop panic-selling, and fresh buyers step in near that price, which tends to hold price up like a floor. In the code, classifyZone() tags a shelf 'break-even-demand' whenever the current price is at or above the shelf's top edge, and the app picks the closest one below price as the nearest demand.",
+    why: "It is your floor and your entry area: the gap play buys at this shelf and puts the stop just below it, so your risk is well-defined.",
+  },
+  {
+    id: "break-even-supply",
+    term: "Break-even supply",
+    short: "A volume shelf above the current price that tends to act as resistance (a ceiling).",
+    plain:
+      "A volume shelf is a price band where heavy volume traded, so it behaves like a wall. When such a shelf sits above today's price, the app calls it break-even supply. The reasoning: people who bought up there got stuck when price fell, so as price climbs back they sell to get out at break-even, which caps the move like a ceiling. In the code, classifyZone() tags a shelf 'break-even-supply' when the current price is at or below the shelf's bottom edge, and the app picks the closest one above price as the nearest supply.",
+    why: "It is your ceiling, so it is the natural target: price often runs fast up to this overhead shelf and then stalls, which is where the gap play takes profit.",
+  },
+  {
+    id: "gap-play",
+    term: "The gap play (main play)",
+    short: "Buy the lower shelf, ride the fast move through the gap up to the next shelf.",
+    plain:
+      "This is the app's main setup. Between two heavy-volume shelves there is often a volume gap, or air pocket, where almost nothing traded, so price slides through it quickly. The plan is to buy at the lower shelf (support) and aim for the shelf on the far side of the gap (the target). In the code the entry is the top of the support shelf, the stop is just under that shelf's low (0.5% below), and the target is the near edge of the next shelf above, giving a reward-to-risk number (R). The play is marked 'active' only when price is actually sitting at the support shelf, ready to go.",
+    why: "It gives you a clean, mechanical trade: a set entry, a stop right under support, and a target across the air pocket, with an R multiple telling you the payoff before you ever click buy.",
+  },
+  {
+    id: "relative-strength",
+    term: "Relative strength (RS)",
+    short: "Whether the stock is beating the market (SPY/QQQ) or lagging it. You want leaders.",
+    plain:
+      "Relative strength answers a simple question: is this stock stronger than the overall market, or weaker? The app measures it by comparing the stock's return to a benchmark's over both about one month (21 trading days) and about three months (63 days); if the stock's gain is bigger, it is outperforming. It also tracks an RS line (the stock's price divided by the benchmark's) and checks whether that line is near its own recent high or above its own 50-day average, both signs of a true leader. The RS gate passes only when the stock beats the benchmark over both windows and its RS line is near a high or above its average.",
+    why: "Strong stocks tend to keep leading and pull back less, so demanding relative strength keeps you buying leaders instead of laggards.",
+  },
+  {
+    id: "avwap",
+    term: "AVWAP (Anchored VWAP)",
+    short: "The average price everyone paid since a chosen start date; a break-even line.",
+    plain:
+      "You pick a meaningful starting bar, like a big high, a big low, the start of the year, or an earnings date. From that bar to today, AVWAP is the volume-weighted average price paid, so it shows the break-even cost for everyone who bought since then. The app also checks whether that line is rising, flat, or falling and whether price is above or below it. Price above a rising AVWAP means buyers are in control (bullish); price below a falling one means sellers are in control (bearish).",
+    why: "It tells you at a glance whether the average buyer since your anchor is winning or losing, which sets the tone for taking a long trade.",
+  },
+  {
+    id: "avwap-reclaim",
+    term: "AVWAP reclaim / loss",
+    short: "Closing back above the AVWAP is a reclaim (bullish); closing back below is a loss.",
+    plain:
+      "The app watches the last few bars (5 by default) to see if price crossed the AVWAP line. A reclaim is when price was below the line and then closes back above it, a bullish trigger that momentum is turning up. A loss is the opposite: price closes back below the line after being above. If no recent cross happened, price is simply holding above or holding below the line.",
+    why: "A fresh reclaim is the app's green-light trigger to buy support; without it the call is usually WAIT FOR RECLAIM, so you don't buy too early.",
+  },
+  {
+    id: "avwap-pinch",
+    term: "AVWAP pinch (confluence)",
+    short: "Two or more AVWAPs from different anchors bunched at nearly the same price.",
+    plain:
+      "The app builds several AVWAPs from different starting points (the 52-week high, the 52-week low, and the start of the year). A pinch is when at least two of those lines cluster within about 3% of each other, stacking up into one shared level. The tighter they bunch (the smaller the spread), the stronger and more meaningful that level becomes. The app also flags when the current price is sitting right inside that pinch band.",
+    why: "Several independent break-even lines agreeing on one price makes that level a stronger wall, so a bounce or a break there carries more weight.",
+  },
+  {
+    id: "avwap-bands",
+    term: "AVWAP bands (±1σ)",
+    short: "Lines one standard deviation above and below the AVWAP that show how stretched price is.",
+    plain:
+      "Around the AVWAP line, the app draws an upper and a lower band set one standard deviation (a measure of how much price normally wanders) away from it. It measures this from the volume-weighted spread of prices since the anchor, so the bands widen when trading is choppy and tighten when it is calm. When price pushes near or past a band, it is stretched far from the average and may be due for a pause or pullback.",
+    why: "The bands tell you if you're chasing an over-extended move or entering while price is still close to fair value, and they help project realistic targets.",
+  },
+  {
+    id: "gates",
+    term: "Gates",
+    short: "Seven yes/no safety checks a stock must pass to count as a clean setup.",
+    plain:
+      "The app runs each stock through seven pass-or-fail tests: enough dollar volume and a high enough price (liquidity), an uptrend (above a flat-or-rising 200-day average and near the 50-day), beating the market (relative strength), a volume shelf right at the current price, an active gap play worth taking, price confirmed at its AVWAP break-even line, and a quiet, tightening market with no heavy selling bar (contraction). Each gate is just a green check or a red X. A stock that passes all seven is the cleanest kind of setup the scanner looks for.",
+    why: "Gates keep you from buying something that looks exciting but is thin, in a downtrend, or lagging, so you only risk money on setups that clear every basic check.",
+  },
+  {
+    id: "score",
+    term: "Score / A+",
+    short: "A 0-100 rank of setup quality across the scan; A+ means it passes all gates.",
+    plain:
+      "After grading every stock, the app scores several quality measures (shelf-at-price, gap-play quality, relative strength, AVWAP, and more) and stretches each one onto a 0-to-1 scale by comparing it to the rest of the scan. Those measures are blended with weights (the shelf and gap play matter most) into a single 0-100 number, so the score is always relative to the other stocks scanned that day. Results are then sorted: stocks that pass all seven gates come first, then those with more of the key gates, then by the score. A stock earns A+ only when it passes every gate.",
+    why: "The score tells you which names to look at first, and A+ flags the handful that clear every check, so you spend attention on the strongest candidates.",
+  },
+  {
+    id: "levels",
+    term: "Entry / Stop / Target",
+    short: "Where you buy, where you bail if wrong, and where you take profit.",
+    plain:
+      "Entry is your buy trigger: a close back above the top of the volume shelf (or the fair-price POC) as price pushes up into the air pocket. Stop is where you admit you were wrong and get out: just below the shelf's low, set 0.5% under it, because a decisive drop below the shelf breaks the whole idea. Target is where you plan to take profit: the first target (T1) is the far side of the gap, the next shelf up, or the POC, and a second target (T2) sits further out at the top of the value area or beyond.",
+    why: "Deciding all three before you buy turns a hope into a plan, so you know your buy price, your maximum loss, and your payoff instead of reacting with emotion.",
+  },
+  {
+    id: "r-multiple",
+    term: "R-multiple (R:R)",
+    short: "Reward compared to risk; 2R means you'd make twice what you'd lose if stopped out.",
+    plain:
+      "R is your risk: the distance from your entry down to your stop. The app measures each target in Rs, so if the target is twice as far above your entry as your stop is below it, that target is 2R. It calculates this as the gain to the target divided by that risk distance. For a gap play it uses the same idea, comparing the reward percentage up to the target against the risk percentage down to the stop.",
+    why: "R:R shows whether a trade is worth taking at all; risking a dollar to make two can pay off even when you're often wrong, while risking a lot to make a little rarely does.",
+  },
+  {
+    id: "verdict",
+    term: "Verdict (BUY / WAIT / WATCH / AVOID)",
+    short: "One plain-English call that combines all the checks into a single decision.",
+    plain:
+      "The app rolls the gates and levels into one clear call. AVOID means it's too thin or cheap, or a downtrend with nothing to lean on. ON WATCH means the setup is close but not ready, either a downtrend with a real shelf, or an uptrend where price hasn't pulled back to support yet. WAIT FOR RECLAIM means the shelf is there but price is still below its AVWAP break-even line, so you wait for a close back above it. BUY THE DIP or BUY is the green light: uptrend, price resting on a fat shelf, and the AVWAP confirming, with BUY reserved for when an active gap play is set to go.",
+    why: "The verdict saves you from weighing seven checks yourself, giving you a single calm decision plus the exact level to act on so you don't jump in early or force a bad trade.",
+  },
+];
+
+const BY_ID = new Map(GLOSSARY.map((e) => [e.id, e]));
+export function glossaryById(id: string): GlossaryEntry | undefined {
+  return BY_ID.get(id);
+}
+
+/** Map a scanner gate key to its glossary id, for badge tooltips. */
+export const GATE_GLOSSARY: Record<string, string> = {
+  liquidity: "gates",
+  trend: "gates",
+  rs: "relative-strength",
+  shelf: "volume-shelf",
+  gap: "gap-play",
+  avwap: "avwap",
+  contraction: "gates",
+};

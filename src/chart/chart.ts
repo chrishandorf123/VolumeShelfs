@@ -63,6 +63,12 @@ export class VolumeShelfsChart {
   private hover: { x: number; y: number } | null = null;
   private dpr = 1;
   private ro: ResizeObserver | null = null;
+  /** Visible candle range; null = fit all. Set by zoom/pan. */
+  private view: { start: number; end: number } | null = null;
+  /** Resolved visible range for the current render (set in layout). */
+  private visible = { start: 0, end: 0 };
+  private lastCount = -1;
+  private drag: { x: number; startView: { start: number; end: number }; moved: boolean } | null = null;
 
   /** Fired when the user clicks a candle to set a new anchor. */
   onAnchorChange: ((index: number) => void) | null = null;
@@ -76,12 +82,20 @@ export class VolumeShelfsChart {
     this.ctx = ctx;
     canvas.addEventListener("mousemove", this.handleMove);
     canvas.addEventListener("mouseleave", this.handleLeave);
-    canvas.addEventListener("click", this.handleClick);
+    canvas.addEventListener("mousedown", this.handleDown);
+    canvas.addEventListener("mouseup", this.handleUp);
+    canvas.addEventListener("dblclick", this.handleDblClick);
+    canvas.addEventListener("wheel", this.handleWheel, { passive: false });
     this.ro = new ResizeObserver(() => this.resize());
     this.ro.observe(canvas.parentElement ?? canvas);
   }
 
   setModel(model: ChartModel): void {
+    // Reset the viewport when a different series is loaded (fit to all).
+    if (model.candles.length !== this.lastCount) {
+      this.view = null;
+      this.lastCount = model.candles.length;
+    }
     this.model = model;
     this.render();
   }
@@ -89,7 +103,10 @@ export class VolumeShelfsChart {
   destroy(): void {
     this.canvas.removeEventListener("mousemove", this.handleMove);
     this.canvas.removeEventListener("mouseleave", this.handleLeave);
-    this.canvas.removeEventListener("click", this.handleClick);
+    this.canvas.removeEventListener("mousedown", this.handleDown);
+    this.canvas.removeEventListener("mouseup", this.handleUp);
+    this.canvas.removeEventListener("dblclick", this.handleDblClick);
+    this.canvas.removeEventListener("wheel", this.handleWheel);
     this.ro?.disconnect();
   }
 
@@ -115,11 +132,19 @@ export class VolumeShelfsChart {
       height: Math.max(10, h - MARGIN.top - MARGIN.bottom),
     };
     const candles = this.model?.candles ?? [];
+    const n = candles.length;
+    // Resolve the visible range from the viewport (default: fit all).
+    const start = Math.min(Math.max(this.view?.start ?? 0, 0), Math.max(0, n - 1));
+    const end = Math.min(Math.max(this.view?.end ?? n - 1, start), Math.max(0, n - 1));
+    this.visible = { start, end };
+    const visibleCount = Math.max(1, end - start + 1);
+
+    // Fit the price axis to the *visible* candles so zooming re-scales price.
     let low = Infinity;
     let high = -Infinity;
-    for (const c of candles) {
-      if (c.low < low) low = c.low;
-      if (c.high > high) high = c.high;
+    for (let i = start; i <= end; i++) {
+      if (candles[i].low < low) low = candles[i].low;
+      if (candles[i].high > high) high = candles[i].high;
     }
     if (!Number.isFinite(low) || !Number.isFinite(high)) {
       low = 0;
@@ -128,7 +153,7 @@ export class VolumeShelfsChart {
     const pad = (high - low) * 0.04 || 1;
     const scale = this.model?.profile?.scale ?? "log";
     this.priceAxis = new PriceAxis(Math.max(low - pad, low * 0.98), high + pad, scale, this.plot);
-    this.indexAxis = new IndexAxis(candles.length, this.plot);
+    this.indexAxis = new IndexAxis(start, visibleCount, this.plot);
   }
 
   // ---- rendering ----------------------------------------------------------
@@ -182,11 +207,11 @@ export class VolumeShelfsChart {
   }
 
   private drawCandles(): void {
-    const { ctx, priceAxis, indexAxis, theme } = this;
+    const { ctx, priceAxis, indexAxis, theme, visible } = this;
     const candles = this.model!.candles;
     if (!priceAxis || !indexAxis) return;
     const bw = indexAxis.bodyWidth;
-    for (let i = 0; i < candles.length; i++) {
+    for (let i = visible.start; i <= visible.end; i++) {
       const c = candles[i];
       const x = indexAxis.x(i);
       const up = c.close >= c.open;
@@ -216,6 +241,10 @@ export class VolumeShelfsChart {
     const right = plot.x + plot.width;
     const roles = this.binRoles();
 
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(plot.x, plot.y, plot.width, plot.height);
+    ctx.clip();
     for (let i = 0; i < profile.bins.length; i++) {
       const bin = profile.bins[i];
       if (bin.volume <= 0) continue;
@@ -226,6 +255,7 @@ export class VolumeShelfsChart {
       ctx.fillStyle = i === profile.pocIndex ? theme.profileBarPoc : roles[i];
       ctx.fillRect(right - bw, yTop + 0.5, bw, Math.max(1, hgt - 1));
     }
+    ctx.restore();
   }
 
   /** Per-bin fill colour for the profile bars based on shelf/gap membership. */
@@ -281,6 +311,10 @@ export class VolumeShelfsChart {
     if (!priceAxis) return;
     const yTop = priceAxis.y(priceHigh);
     const yBot = priceAxis.y(priceLow);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(plot.x, plot.y, plot.width, plot.height);
+    ctx.clip();
     ctx.fillStyle = fill;
     ctx.fillRect(plot.x, yTop, plot.width, yBot - yTop);
     ctx.strokeStyle = line;
@@ -293,6 +327,7 @@ export class VolumeShelfsChart {
     ctx.lineTo(plot.x + plot.width, Math.round(yBot) + 0.5);
     ctx.stroke();
     ctx.setLineDash([]);
+    ctx.restore();
   }
 
   private bandLabel(priceHigh: number, text: string, color: string): void {
@@ -329,6 +364,12 @@ export class VolumeShelfsChart {
     const { ctx, priceAxis, indexAxis, plot } = this;
     if (!priceAxis || !indexAxis) return;
 
+    // Clip line overlays to the plot so they don't spill over the axes when
+    // the chart is zoomed/panned.
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(plot.x, plot.y, plot.width, plot.height);
+    ctx.clip();
     for (const s of overlays.series ?? []) {
       ctx.strokeStyle = s.color;
       ctx.lineWidth = 1.5;
@@ -364,6 +405,7 @@ export class VolumeShelfsChart {
         ctx.fillText(s.label, Math.min(lastX, plot.x + plot.width) - 2, lastY - 2);
       }
     }
+    ctx.restore();
 
     for (const lvl of overlays.levels ?? []) {
       const y = Math.round(priceAxis.y(lvl.price)) + 0.5;
@@ -441,13 +483,14 @@ export class VolumeShelfsChart {
     for (const p of priceAxis.ticks(6)) {
       ctx.fillText(formatPrice(p), plot.x + plot.width + 6, priceAxis.y(p));
     }
-    // time axis: a handful of evenly spaced dates
+    // time axis: a handful of evenly spaced dates across the visible range
     const candles = this.model!.candles;
+    const { start, end } = this.visible;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
     const ticks = 6;
     for (let i = 0; i <= ticks; i++) {
-      const idx = Math.min(candles.length - 1, Math.round((i / ticks) * (candles.length - 1)));
+      const idx = Math.min(end, start + Math.round((i / ticks) * (end - start)));
       ctx.fillText(formatDate(candles[idx].time), indexAxis.x(idx), plot.y + plot.height + 6);
     }
   }
@@ -544,23 +587,79 @@ export class VolumeShelfsChart {
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
   }
 
+  private resolvedView(): { start: number; end: number } {
+    const n = this.model?.candles.length ?? 0;
+    return this.view ?? { start: 0, end: Math.max(0, n - 1) };
+  }
+
   private handleMove = (e: MouseEvent): void => {
-    this.hover = this.pointerPos(e);
+    const pos = this.pointerPos(e);
+    this.hover = pos;
+    // Drag to pan the viewport.
+    if (this.drag && this.indexAxis && this.model) {
+      const n = this.model.candles.length;
+      const dxIdx = Math.round((this.drag.x - pos.x) / this.indexAxis.step);
+      if (Math.abs(pos.x - this.drag.x) > 3) this.drag.moved = true;
+      const count = this.drag.startView.end - this.drag.startView.start + 1;
+      let start = this.drag.startView.start + dxIdx;
+      start = Math.min(Math.max(start, 0), Math.max(0, n - count));
+      this.view = count >= n ? null : { start, end: start + count - 1 };
+    }
     this.render();
   };
 
   private handleLeave = (): void => {
     this.hover = null;
+    this.drag = null;
     this.render();
   };
 
-  private handleClick = (e: MouseEvent): void => {
+  private handleDown = (e: MouseEvent): void => {
+    const { x, y } = this.pointerPos(e);
+    if (x < this.plot.x || x > this.plot.x + this.plot.width) return;
+    if (y < this.plot.y || y > this.plot.y + this.plot.height) return;
+    this.drag = { x, startView: this.resolvedView(), moved: false };
+  };
+
+  private handleUp = (e: MouseEvent): void => {
+    const drag = this.drag;
+    this.drag = null;
+    if (!drag || drag.moved) return; // a pan, not a click
+    // A click (no drag) sets the anchor, if the host wants it.
     if (!this.indexAxis || !this.model) return;
     const { x, y } = this.pointerPos(e);
     if (x < this.plot.x || x > this.plot.x + this.plot.width) return;
     if (y < this.plot.y || y > this.plot.y + this.plot.height) return;
-    const idx = this.indexAxis.index(x);
-    this.onAnchorChange?.(idx);
+    this.onAnchorChange?.(this.indexAxis.index(x));
+  };
+
+  private handleDblClick = (): void => {
+    this.view = null; // reset zoom to fit-all
+    this.render();
+  };
+
+  private handleWheel = (e: WheelEvent): void => {
+    if (!this.model || !this.indexAxis) return;
+    e.preventDefault();
+    const n = this.model.candles.length;
+    if (n < 2) return;
+    const { x } = this.pointerPos(e);
+    const cursorIdx = this.indexAxis.index(x);
+    const { start, end } = this.resolvedView();
+    const count = end - start + 1;
+    const factor = e.deltaY > 0 ? 1.2 : 1 / 1.2; // out : in
+    const minCount = Math.min(15, n);
+    const newCount = Math.min(n, Math.max(minCount, Math.round(count * factor)));
+    if (newCount >= n) {
+      this.view = null; // fully zoomed out
+      this.render();
+      return;
+    }
+    const frac = count > 1 ? (cursorIdx - start) / (count - 1) : 0;
+    let newStart = Math.round(cursorIdx - frac * (newCount - 1));
+    newStart = Math.min(Math.max(newStart, 0), n - newCount);
+    this.view = { start: newStart, end: newStart + newCount - 1 };
+    this.render();
   };
 }
 

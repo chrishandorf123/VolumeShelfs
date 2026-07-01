@@ -24,6 +24,7 @@
           <button class="tab active" data-view="explore">Explore</button>
           <button class="tab" data-view="scanner">Scanner</button>
         </nav>
+        <button id="guideBtn" class="guide-btn" title="Plain-English guide to every term">? Guide</button>
         <div class="topbar-status" id="status" role="status"></div>
       </header>
 
@@ -93,7 +94,7 @@
       <main class="workspace">
         <div class="chart-wrap">
           <canvas id="chart"></canvas>
-          <div class="hint">Tip: click any candle to anchor the profile there.</div>
+          <div class="hint">Click a candle to anchor · scroll to zoom · drag to pan · double-click to reset</div>
         </div>
         <aside class="sidebar" id="sidebar">
           <div class="panel">
@@ -191,6 +192,20 @@
             <div class="detail-panels" id="detailPanels"></div>
           </aside>
         </main>
+      </div>
+    </div>
+
+    <div id="guideOverlay" class="guide-overlay" hidden>
+      <div class="guide-panel">
+        <div class="guide-head">
+          <div>
+            <h2>Guide — what everything means</h2>
+            <p class="muted">Plain-English definitions. Tap the ? on any badge to jump here.</p>
+          </div>
+          <button id="guideClose" class="guide-close" aria-label="Close">✕</button>
+        </div>
+        <input id="guideSearch" class="guide-search" type="search" placeholder="Search terms…" />
+        <div class="guide-body" id="guideBody"></div>
       </div>
     </div>
     <script type="module" src="/src/main.ts"></script>

@@ -4,6 +4,8 @@ import {
   anchoredVwapSeries,
   buildTradePlan,
   detectGaps,
+  recoContextFromScan,
+  recommend,
   scanUniverse,
   smaSeries,
   type ProfileAnalysis,
@@ -15,6 +17,7 @@ import { VolumeShelfsChart, type ChartModel, type SeriesOverlay } from "./chart/
 import { formatPrice, formatVolume } from "./chart/scale";
 import { PROVIDERS, getProvider, type Interval } from "./data";
 import { buildDemoBenchmark, buildDemoUniverse } from "./data/universe";
+import { GATE_GLOSSARY } from "./glossary";
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -240,8 +243,9 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     els.resultsBody.innerHTML = rows
       .map((r, i) => {
         const gates = GATE_ORDER.map(
-          (g) => `<span class="gate ${r.gates[g].pass ? "on" : "off"}" title="${GATE_SHORT[g]}: ${escapeHtml(r.gates[g].detail)}">${GATE_SHORT[g]}</span>`,
+          (g) => `<span class="gate ${r.gates[g].pass ? "on" : "off"}" data-glossary="${GATE_GLOSSARY[g]}" title="${GATE_SHORT[g]}: ${escapeHtml(r.gates[g].detail)} — click to learn">${GATE_SHORT[g]}</span>`,
         ).join("");
+        const reco = recommend(recoContextFromScan(r), buildTradePlan(r));
         const shelf = r.supportShelf
           ? `${r.supportShelf.priceLow.toFixed(2)}–${r.supportShelf.priceHigh.toFixed(2)} <span class="muted">${r.supportShelf.strength.toFixed(1)}×</span>`
           : "<span class='muted'>—</span>";
@@ -254,7 +258,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
               : "<span class='muted'>—</span>";
         return `<tr data-ticker="${r.ticker}" class="${r.ticker === selected ? "sel" : ""}">
           <td class="muted">${i + 1}</td>
-          <td class="tk">${r.ticker}${r.passedAll ? ' <span class="apex-badge">A+</span>' : ""}</td>
+          <td class="tk">${r.ticker}${r.passedAll ? ' <span class="apex-badge">A+</span>' : ""}<div class="reco-chip reco-${reco.verdict}" data-glossary="verdict" title="${escapeHtml(reco.headline)}">${reco.label}</div></td>
           <td><div class="scorebar"><span style="width:${r.score.toFixed(0)}%"></span></div><b>${r.score.toFixed(0)}</b></td>
           <td class="gates-cell">${gates}</td>
           <td>${formatPrice(r.price)}</td>
@@ -289,13 +293,27 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     chart.resize();
 
     els.detailPanels.innerHTML =
-      mainPlayPanel(r) + avwapPanel(r) + gatesPanel(r) + tradePlanPanel(r) + checklistPanel(r);
+      recoPanel(r) + mainPlayPanel(r) + avwapPanel(r) + gatesPanel(r) + tradePlanPanel(r) + checklistPanel(r);
+  }
+
+  function recoPanel(r: ScanResult): string {
+    const reco = recommend(recoContextFromScan(r), buildTradePlan(r));
+    const reasons = reco.reasoning.map((x) => `<li>${escapeHtml(x)}</li>`).join("");
+    return `<div class="panel reco reco-${reco.verdict}">
+      <div class="reco-head">
+        <span class="reco-verdict" data-glossary="verdict" title="What do the verdicts mean? Click to learn">${reco.label}</span>
+        <span class="reco-conf">${reco.confidence} confidence</span>
+      </div>
+      <p class="reco-headline">${escapeHtml(reco.headline)}</p>
+      <ul class="reco-why">${reasons}</ul>
+      <p class="reco-note">Educational tool, not financial advice — always confirm on your own chart.</p>
+    </div>`;
   }
 
   function mainPlayPanel(r: ScanResult): string {
     const gp = r.gapPlay;
     if (gp && gp.active) {
-      return `<div class="panel play"><h2>Main play · volume-gap traverse</h2>
+      return `<div class="panel play"><h2 data-glossary="gap-play" title="Click to learn">Main play · volume-gap traverse</h2>
         <p class="play-line">Hold the <b>${gp.entryShelf.priceLow.toFixed(2)}–${gp.entryShelf.priceHigh.toFixed(2)}</b> shelf, ride the
         <b>${(gp.airPocketPct * 100).toFixed(0)}%</b> air pocket to <b>${formatPrice(gp.target)}</b>${gp.targetShelf ? " (next shelf)" : ""}.</p>
         <div class="summary">
@@ -307,7 +325,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     }
     if (r.idealScore >= 0.4 && r.supportShelf) {
       const s = r.supportShelf;
-      return `<div class="panel play"><h2>Main play · shelf at price</h2>
+      return `<div class="panel play"><h2 data-glossary="volume-shelf" title="Click to learn">Main play · shelf at price</h2>
         <p class="play-line">Price is pulling into the <b>${s.priceLow.toFixed(2)}–${s.priceHigh.toFixed(2)}</b> volume shelf
         (${s.strength.toFixed(1)}× mean)${r.anchoredFromHigh ? ", anchored from the dominant high" : ""}. Ideal score ${(r.idealScore * 100).toFixed(0)}.</p></div>`;
     }
@@ -324,7 +342,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
         : a.event === "loss"
           ? "loss ↓"
           : a.event.replace("holding-", "holding ");
-    return `<div class="panel"><h2>AVWAP (Shannon)</h2>
+    return `<div class="panel"><h2 data-glossary="avwap" title="Click to learn">AVWAP (Shannon)</h2>
       <div class="summary">
         <div class="stat"><span class="k">Anchor AVWAP</span><span class="v">${formatPrice(st.value)}</span></div>
         <div class="stat"><span class="k">Regime</span><span class="v ${regimeCls}">${st.regime}</span></div>
@@ -396,7 +414,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     const rows = GATE_ORDER.map((g) => {
       const gate = r.gates[g];
       return `<div class="gate-row ${gate.pass ? "pass" : "fail"}">
-        <span class="dot"></span><span class="gl">${gate.label}</span>
+        <span class="dot"></span><span class="gl" data-glossary="${GATE_GLOSSARY[g]}" title="Click to learn">${gate.label}</span>
         <span class="gd muted">${escapeHtml(gate.detail)}</span></div>`;
     }).join("");
     return `<div class="panel"><h2>Gates (${r.gatesPassed}/7)</h2>${rows}</div>`;

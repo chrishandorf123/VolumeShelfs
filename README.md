@@ -205,16 +205,35 @@ adjustable weights. Candidates are ordered by **hard-gate count first**
 tight gap can't outrank a real leader, then by score. Toggle **A+ only** to show
 names that clear all seven gates.
 
+### Plain-English verdict (for beginners)
+
+Every candidate gets a one-word call so you don't have to read seven gates
+yourself: **BUY / BUY THE DIP / WAIT FOR RECLAIM / ON WATCH / AVOID**, with a
+one-line "why" and the exact entry / stop / target. The logic mirrors a
+disciplined trader: don't fight liquidity, don't fight the trend, only buy
+support when the AVWAP confirms and the reward-to-risk is worth it — otherwise
+wait. It will not tell you to buy a wide-stop / low-reward trade, and most of
+the time the honest answer is *wait*. (Educational tool, not financial advice.)
+
 ### Per-candidate detail
 
 Click any row to load its chart with the support shelf, the AVWAP (key
 break-even line) and its ±1σ bands, confluence AVWAPs, 50/200-day MAs, and the
 trade-plan levels, plus:
 
+- the **verdict panel** (the plain-English call above),
 - the **main-play panel** (the gap traverse, or the shelf-at-price ideal),
 - the **AVWAP panel** (regime, slope/side, reclaim/loss, pinch),
 - the **gate breakdown**, a gap-play-aware **trade plan**, and the **manual
   confirmation checklist**.
+
+### Chart controls & the Guide
+
+The chart supports **scroll to zoom**, **drag to pan**, and **double-click to
+reset** — the price axis auto-fits whatever range is visible. Every jargon term
+(break-even supply/demand, POC, value area, AVWAP, gaps, gates, R:R, …) is
+explained in plain English in the **Guide** (the *? Guide* button, top-right);
+badges and headings are click-to-define and jump straight to the right entry.
 
 > The bundled demo universe is synthetic, so gate passes vary. A pullback-from-a-
 > high like the ASST archetype is correctly recognized as the *ideal shelf/anchor

@@ -10,3 +10,4 @@ export * from "./relativeStrength";
 export * from "./anchor";
 export * from "./scanner";
 export * from "./tradePlan";
+export * from "./recommendation";
