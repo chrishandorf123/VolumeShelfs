@@ -1283,6 +1283,45 @@ td.tk {
   white-space: nowrap;
 }
 
+/* risk-based position sizer in the trade plan */
+.possize {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+.possize > .k {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  font-size: 10px;
+}
+.possize label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+}
+.possize input {
+  width: 68px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  padding: 3px 6px;
+  font-size: 12px;
+}
+.possize .ps-out {
+  color: var(--text);
+}
+.possize .ps-out b {
+  color: var(--accent);
+}
+
 /* confluence grade pill in the scanner results table */
 .cf-pill {
   display: inline-flex;
