@@ -22,6 +22,8 @@ import { VolumeShelfsChart, type ChartModel, type SeriesOverlay } from "./chart/
 import { formatPrice, formatVolume } from "./chart/scale";
 import { PROVIDERS, getProvider, type Interval } from "./data";
 import { buildDemoBenchmark, buildDemoUniverse } from "./data/universe";
+import { marketUniverse } from "./data/marketUniverse";
+import { Pacer, minIntervalMs } from "./data/rateLimit";
 import { GATE_GLOSSARY } from "./glossary";
 import { recoPanelHtml } from "./reco-view";
 import { confirmationPanelHtml, confluencePanelHtml, thesisPanelHtml } from "./thesis-view";
@@ -111,10 +113,23 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     table: $("resultsTable"),
     detailHead: $("detailHead"),
     detailPanels: $("detailPanels"),
+    loadUniverse: $<HTMLButtonElement>("loadUniverse"),
+    keepTop: $<HTMLButtonElement>("keepTop"),
+    tickerCount: $("tickerCount"),
+    callsPerMin: $<HTMLInputElement>("callsPerMin"),
+    rateField: $("rateField"),
+  };
+
+  const tickerList = () =>
+    els.tickers.value.split(/[\s,;]+/).map((s) => s.trim().toUpperCase()).filter(Boolean);
+  const refreshTickerCount = () => {
+    const n = tickerList().length;
+    els.tickerCount.textContent = n ? `${n} ticker${n === 1 ? "" : "s"}` : "";
   };
 
   // Restore the saved watchlist + benchmark so users don't retype every time.
   els.tickers.value = localStorage.getItem("vs.tickers") ?? "";
+  els.callsPerMin.value = localStorage.getItem("vs.callsPerMin") ?? "75";
   const savedBench = localStorage.getItem("vs.bench");
   if (savedBench) els.benchmark.value = savedBench;
 
@@ -158,8 +173,33 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
       els.tickerField.hidden = !live;
       els.benchField.hidden = !live;
       els.scanProviderField.hidden = !live;
+      els.rateField.hidden = !live;
       els.scanKeyField.hidden = !live || !getProvider(els.scanProvider.value)?.requiresApiKey;
     });
+  });
+
+  // ---- watchlist / universe helpers -------------------------------------
+  refreshTickerCount();
+  els.tickers.addEventListener("input", refreshTickerCount);
+  els.callsPerMin.addEventListener("change", () =>
+    localStorage.setItem("vs.callsPerMin", els.callsPerMin.value),
+  );
+  els.loadUniverse.addEventListener("click", () => {
+    els.tickers.value = marketUniverse().join(" ");
+    localStorage.setItem("vs.tickers", els.tickers.value);
+    refreshTickerCount();
+    setStatus(`Loaded ${marketUniverse().length} liquid names — press Run scan (paced to your calls/min).`, "ok");
+  });
+  els.keepTop.addEventListener("click", () => {
+    if (results.length === 0) {
+      setStatus("Run a scan first, then keep the top-ranked names.", "error");
+      return;
+    }
+    const top = results.slice(0, 20).map((r) => r.ticker);
+    els.tickers.value = top.join(" ");
+    localStorage.setItem("vs.tickers", els.tickers.value);
+    refreshTickerCount();
+    setStatus(`Watchlist trimmed to the top ${top.length} ranked names.`, "ok");
   });
 
   // ---- advanced controls -------------------------------------------------
@@ -243,20 +283,33 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     // Persist the watchlist + benchmark for next time.
     localStorage.setItem("vs.tickers", els.tickers.value);
     localStorage.setItem("vs.bench", benchSym);
+
+    // Pace requests to the provider's per-minute limit so a big universe scan
+    // doesn't trip a 429. Each call is spaced ~60s / callsPerMin apart.
+    const callsPerMin = Math.max(1, Math.min(1200, Number(els.callsPerMin.value) || 75));
+    localStorage.setItem("vs.callsPerMin", String(callsPerMin));
+    const pacer = new Pacer(minIntervalMs(callsPerMin));
+    const etaMin = ((symbols.length + 1) / callsPerMin).toFixed(1);
+
+    await pacer.wait();
     setStatus(`Fetching benchmark ${benchSym}…`);
     lastBenchmark = await provider.fetchCandles({ symbol: benchSym, interval: "daily" as Interval }, apiKey || undefined);
 
     const inputs: ScanInput[] = [];
+    let failed = 0;
     for (let i = 0; i < symbols.length; i++) {
-      setStatus(`Fetching ${symbols[i]} (${i + 1}/${symbols.length})…`);
+      await pacer.wait();
+      setStatus(`Fetching ${symbols[i]} (${i + 1}/${symbols.length}) · ~${etaMin} min at ${callsPerMin}/min…`);
       try {
         const candles = await provider.fetchCandles({ symbol: symbols[i], interval: "daily" as Interval }, apiKey || undefined);
         if (candles.length >= 60) inputs.push({ ticker: symbols[i], candles });
+        else failed += 1;
       } catch {
-        /* skip failed tickers; surfaced via count */
+        failed += 1; // skip failed tickers; surfaced via count
       }
     }
-    if (inputs.length === 0) throw new Error("No tickers returned enough data");
+    if (inputs.length === 0) throw new Error("No tickers returned enough data (check the key / rate limit)");
+    if (failed > 0) setStatus(`${inputs.length} scanned, ${failed} skipped (no data / limit).`, "ok");
     lastInputs = inputs;
   }
 

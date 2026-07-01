@@ -136,6 +136,15 @@
           <div class="control grow" id="tickerField" hidden>
             <label for="tickers">Tickers (space / comma / newline separated)</label>
             <textarea id="tickers" rows="2" placeholder="AAPL MSFT NVDA AMD ..."></textarea>
+            <div class="ticker-actions">
+              <button id="loadUniverse" class="ghost" type="button" title="Fill with a curated liquid US universe (~180 names + ETFs)">Load liquid universe</button>
+              <button id="keepTop" class="ghost" type="button" title="After a scan, trim the list to the top-ranked names as your watchlist">★ Keep top 20</button>
+              <span class="tk-count" id="tickerCount"></span>
+            </div>
+          </div>
+          <div class="control" id="rateField" hidden>
+            <label for="callsPerMin">Calls / min</label>
+            <input id="callsPerMin" type="number" min="1" max="1200" step="1" value="75" title="Paces API requests to your provider's per-minute limit" />
           </div>
           <div class="control" id="benchField" hidden>
             <label for="benchmark">Benchmark</label>
