@@ -1,5 +1,41 @@
-import type { Cell, ModelRecommendation, Tables, BacktestResult } from "./core";
+import type { Bucket, Cell, ModelRecommendation, Tables, Trade, BacktestResult } from "./core";
+import { gateAblation, wilson } from "./core";
 import { formatPrice } from "./chart/scale";
+
+const BUCKETS: Bucket[] = ["A", "B", "C", "D"];
+
+/** In-sample vs out-of-sample hit-rate-to-T1 by bucket (70/30 split by time). */
+function validationHtml(trades: Trade[]): string {
+  if (trades.length < 20) return `<p class="muted model-hint">Too few trades for an out-of-sample split.</p>`;
+  const sorted = [...trades].sort((a, b) => a.entryTime - b.entryTime);
+  const cut = Math.floor(sorted.length * 0.7);
+  const is = sorted.slice(0, cut);
+  const oos = sorted.slice(cut);
+  const cellHit = (arr: Trade[], b: Bucket) => {
+    const t = arr.filter((x) => x.bucket === b);
+    const k = t.filter((x) => x.hitT1).length;
+    const ci = wilson(k, t.length);
+    return t.length ? `${pct(k / t.length)}<small> (N=${t.length}, ${pct(ci[0])}–${pct(ci[1])})</small>` : "<small>—</small>";
+  };
+  const rows = BUCKETS.map(
+    (b) => `<tr><td><b>${b}</b></td><td>${cellHit(is, b)}</td><td>${cellHit(oos, b)}</td></tr>`,
+  ).join("");
+  return `<table class="model-tbl"><tr class="model-head"><td>Bucket</td><td>In-sample (70%)</td><td>Out-of-sample (30%)</td></tr>${rows}</table>
+    <p class="muted model-hint">The edge is only trustworthy if the bucket monotonicity survives out-of-sample. The OOS slice is the most recent 30%. Slicing by 4 buckets × 5 gates × regimes invites false positives — treat a single impressive cell with skepticism.</p>`;
+}
+
+/** Marginal effect of each confirmation gate on the T1 hit rate, per bucket. */
+function ablationHtml(trades: Trade[]): string {
+  const rows = gateAblation(trades)
+    .filter((r) => r.n > 0)
+    .map(
+      (r) => `<tr class="${r.n < 30 ? "thin" : ""}"><td>${r.gate}</td><td><b>${r.bucket}</b></td><td>${r.n}</td><td>${pct(r.hitRateT1)}<small> (${pct(r.ciT1[0])}–${pct(r.ciT1[1])})</small></td><td>${r.avgR.toFixed(2)}</td></tr>`,
+    )
+    .join("");
+  if (!rows) return `<p class="muted model-hint">No gated sub-samples.</p>`;
+  return `<table class="model-tbl"><tr class="model-head"><td>Gate</td><td>Bkt</td><td>N</td><td>Hit→T1</td><td>Avg R</td></tr>${rows}</table>
+    <p class="muted model-hint">A gate earns its place only if it lifts the hit rate without gutting the sample.</p>`;
+}
 
 function esc(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
@@ -52,6 +88,14 @@ export function modelPanelHtml(rec: ModelRecommendation, tables: Tables, result:
       ${bucketTableHtml(tables)}
       <p class="model-meta muted">${result.trades.length} trades over ${result.usableBars} usable bars (${pct1(result.candidateFraction)} candidates).
         ${result.notes.map(esc).join(" ")}</p>
+    </details>
+    <details class="model-table">
+      <summary>Out-of-sample validation</summary>
+      ${validationHtml(result.trades)}
+    </details>
+    <details class="model-table">
+      <summary>Confirmation-gate ablation</summary>
+      ${ablationHtml(result.trades)}
     </details>
     <p class="model-disclaimer">Research tool. Single-symbol, client-side historical probabilities — not predictions. Survivorship-unadjusted; the model can be wrong and regimes shift. Not financial advice.</p>
   </div>`;
