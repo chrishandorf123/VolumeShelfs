@@ -1,4 +1,43 @@
-import type { Confirmation, DualThesis, ThesisCase } from "./core";
+import type { Confirmation, ConfluenceScore, DualThesis, ThesisCase } from "./core";
+
+const TIER_NAME: Record<number, string> = {
+  1: "Confluence",
+  2: "Trigger",
+  3: "Volume",
+  4: "Momentum",
+  5: "Market / RS",
+  6: "Exhaustion",
+};
+
+/** The scoreable 10-item confluence checklist (Wujastyk's full tiered gate). */
+export function confluencePanelHtml(cf: ConfluenceScore): string {
+  const rows = cf.items
+    .map(
+      (it) =>
+        `<div class="cf-item ${it.pass ? "on" : "off"}">
+          <span class="cf-dot"></span>
+          <span class="cf-tier">T${it.tier}</span>
+          <span class="cf-label">${esc(it.label)}</span>
+          <span class="cf-detail">${esc(it.detail)}</span>
+        </div>`,
+    )
+    .join("");
+  const flag = cf.chasing
+    ? `<span class="cf-flag chase">⚠ chasing (+${cf.distanceSD.toFixed(1)} SD)</span>`
+    : cf.reversionIntoStrength
+      ? `<span class="cf-flag edge">★ reversion-into-strength</span>`
+      : "";
+  return `<div class="panel confluence-panel">
+    <div class="cf-head">
+      <h2 data-glossary="confluence-score" title="Wujastyk's scoreable confirmation checklist. Click to learn">Confluence scorecard</h2>
+      <span class="cf-grade grade-${cf.grade.replace("+", "plus")}">${cf.grade} · ${cf.passed}/${cf.total}</span>
+    </div>
+    ${flag}
+    <p class="cf-verdict">${esc(cf.verdict)}</p>
+    <div class="cf-tiers muted">${Object.entries(TIER_NAME).map(([t, name]) => `T${t} ${name}`).join(" · ")}</div>
+    <div class="cf-list">${rows}</div>
+  </div>`;
+}
 
 function esc(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);

@@ -1181,6 +1181,108 @@ td.tk {
   color: var(--text);
 }
 
+/* ---- confluence scorecard ---- */
+.cf-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cf-head h2 {
+  margin: 0;
+}
+.cf-grade {
+  font-size: 13px;
+  font-weight: 800;
+  padding: 3px 9px;
+  border-radius: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+.cf-grade.grade-Aplus {
+  background: var(--up);
+  color: #06241f;
+  border-color: var(--up);
+}
+.cf-grade.grade-A {
+  color: var(--up);
+  border-color: var(--up);
+}
+.cf-grade.grade-C {
+  color: var(--muted);
+}
+.cf-flag {
+  display: inline-block;
+  margin: 8px 0 2px;
+  padding: 3px 9px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.cf-flag.edge {
+  background: var(--up);
+  color: #06241f;
+}
+.cf-flag.chase {
+  background: var(--down);
+  color: #2a0d0c;
+}
+.cf-verdict {
+  margin: 8px 0 6px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text);
+}
+.cf-tiers {
+  font-size: 10px;
+  letter-spacing: 0.3px;
+  margin-bottom: 6px;
+}
+.cf-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cf-item {
+  display: grid;
+  grid-template-columns: 12px 22px 1fr auto;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 6px;
+  border-radius: 5px;
+  background: var(--panel);
+  font-size: 12px;
+}
+.cf-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #45507055;
+}
+.cf-item.on .cf-dot {
+  background: var(--up);
+}
+.cf-item.off .cf-dot {
+  background: #45506e;
+}
+.cf-tier {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.cf-item.on .cf-label {
+  color: var(--text);
+}
+.cf-item.off .cf-label {
+  color: var(--muted);
+}
+.cf-detail {
+  font-size: 10.5px;
+  color: var(--muted);
+  text-align: right;
+  white-space: nowrap;
+}
+
 /* ---- secondary confirmation ---- */
 .mrs-badge {
   display: inline-block;

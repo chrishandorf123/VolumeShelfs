@@ -215,6 +215,63 @@ export function percentRange(candles: Candle[], period = 14): number {
 }
 
 /**
+ * Whether the latest bar is a bullish reversal candle — a hammer / pin bar (long
+ * lower wick, small body near the top, closes up) or a bullish engulfing (a down
+ * bar followed by an up bar that engulfs its body). The price-action trigger
+ * Wujastyk waits for at a shelf before acting.
+ */
+export function bullishReversalBar(candles: Candle[]): boolean {
+  const n = candles.length;
+  if (n < 2) return false;
+  const c = candles[n - 1];
+  const p = candles[n - 2];
+  const range = c.high - c.low;
+  if (range <= 0) return false;
+  const body = Math.abs(c.close - c.open);
+  const lowerWick = Math.min(c.open, c.close) - c.low;
+  const upperWick = c.high - Math.max(c.open, c.close);
+  const hammer =
+    lowerWick >= 2 * body &&
+    lowerWick >= 0.5 * range &&
+    upperWick <= 0.15 * range &&
+    body <= 0.4 * range &&
+    c.close >= c.open;
+  const engulfing =
+    p.close < p.open && c.close > c.open && c.close >= p.open && c.open <= p.close;
+  return hammer || engulfing;
+}
+
+/**
+ * Aggregate daily candles into weekly candles (Monday-anchored), for a
+ * higher-timeframe bias read. Volume is summed; OHLC is open-first / high-max /
+ * low-min / close-last within each week.
+ */
+export function resampleWeekly(candles: Candle[]): Candle[] {
+  const out: Candle[] = [];
+  let cur: Candle | null = null;
+  let key = "";
+  for (const c of candles) {
+    const d = new Date(c.time * 1000);
+    const dow = d.getUTCDay();
+    const monday = new Date(d);
+    monday.setUTCDate(d.getUTCDate() - ((dow + 6) % 7));
+    const wk = monday.toISOString().slice(0, 10);
+    if (wk !== key) {
+      if (cur) out.push(cur);
+      cur = { ...c };
+      key = wk;
+    } else if (cur) {
+      cur.high = Math.max(cur.high, c.high);
+      cur.low = Math.min(cur.low, c.low);
+      cur.close = c.close;
+      cur.volume += c.volume;
+    }
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
+/**
  * Slope classification of a series tail: compares the latest value to the value
  * `lookback` bars ago. "rising" / "falling" beyond `tolPct`, else "flat".
  */

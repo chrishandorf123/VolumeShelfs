@@ -13,4 +13,5 @@ export * from "./tradePlan";
 export * from "./recommendation";
 export * from "./anchorCoach";
 export * from "./confirmation";
+export * from "./confluence";
 export * from "./thesis";

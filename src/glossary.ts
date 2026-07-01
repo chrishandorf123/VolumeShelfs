@@ -184,6 +184,14 @@ export const GLOSSARY: GlossaryEntry[] = [
     why: "The volume levels tell you where to act; these tell you whether momentum is actually turning there yet, so you don't buy a shelf that's still falling.",
   },
   {
+    id: "confluence-score",
+    term: "Confluence scorecard",
+    short: "Wujastyk's whole method as a 10-item score across six tiers.",
+    plain:
+      "This turns Jake's process into one scoreable gate. Ten independent checks across six tiers: (1) confluence — price on a shelf above the 200-day with the 5-day rising, an AVWAP pinch, and holding the value-area low; (2) trigger — a reversal or AVWAP-reclaim candle actually on the level; (3) volume — reaction volume at least 1.5× the 20-day average; (4) momentum — RSI above 50 with the MACD histogram turning up; (5) market/RS — the index isn't breaking down and the name is outperforming, with the weekly trend aligned; (6) exhaustion — price within about 1 standard deviation of the anchored mean (not stretched), with a clean stop and reward-to-risk of at least 1.5. The more that line up at the same zone, the higher the conviction.",
+    why: "It rewards buying support that's stretched below its anchored mean with confirmation — the setup with real edge — and warns you off chasing something already extended, which is the exact discipline that separates a plan from a gamble.",
+  },
+  {
     id: "mean-reversion",
     term: "Mean-reversion-into-strength",
     short: "His published scanner: above POC & 200-day, 5-day rising, still below AVWAP.",

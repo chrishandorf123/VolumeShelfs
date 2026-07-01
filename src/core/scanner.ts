@@ -29,6 +29,7 @@ import {
 } from "./anchor";
 import { detectGapPlays, selectPrimaryGapPlay, type GapPlay } from "./gapPlay";
 import { computeConfirmation, type Confirmation } from "./confirmation";
+import { computeConfluence, type ConfluenceScore } from "./confluence";
 
 /** Ranking weights. The volume-profile play (ideal shelf-at-price + gap) leads. */
 export interface ScanWeights {
@@ -153,6 +154,8 @@ export interface ScanResult {
   noBreakdownBar: boolean;
   /** Secondary confirmation layer (MACD / RSI / %-range / 5 SMA + his filter). */
   confirmation: Confirmation;
+  /** The full 10-item confluence scorecard (Wujastyk's tiered confirmation gate). */
+  confluence: ConfluenceScore;
   gates: Record<GateKey, GateResult>;
   passedAll: boolean;
   /** Number of gates passed (0..7), used for ranking. */
@@ -304,6 +307,33 @@ export function scanTicker(
     ma200,
   });
 
+  // ---- the full confluence scorecard (his tiered confirmation checklist) ---
+  const onShelf =
+    supportShelf !== null && proximityPct !== null && proximityPct <= config.proximityPct;
+  const overheadTarget = nearest.above
+    ? (nearest.above.priceLow + nearest.above.priceHigh) / 2
+    : profile.valueArea.high;
+  const confluence = computeConfluence({
+    candles,
+    benchmark,
+    price,
+    anchorIndex: anchor.index,
+    onShelf,
+    pinchActive: pinch?.priceInside ?? false,
+    valueAreaLow: profile.valueArea.low,
+    valueAreaHigh: profile.valueArea.high,
+    ma200,
+    aboveMa200,
+    ma5Rising: confirmation.ma5Rising,
+    rsi: confirmation.rsi.value,
+    macdHistRising: confirmation.macd.histRising,
+    avwapReclaim,
+    keyAvwap: keyState.value,
+    rsOutperform: rs.outperform1mo && rs.outperform3mo,
+    supportLow: supportShelf ? supportShelf.priceLow : null,
+    overheadTarget,
+  });
+
   // ---- ATR contraction & breakdown ---------------------------------------
   const atr = atrSeries(candles, 14);
   const atrNow = atr[n - 1] ?? NaN;
@@ -432,6 +462,7 @@ export function scanTicker(
     pullbackVolumeDrying,
     noBreakdownBar,
     confirmation,
+    confluence,
     gates,
     passedAll,
     gatesPassed,

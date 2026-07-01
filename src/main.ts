@@ -23,7 +23,7 @@ import { formatPrice, formatVolume } from "./chart/scale";
 import { initScanner } from "./scanner-ui";
 import { initGuide } from "./guide";
 import { recoPanelHtml } from "./reco-view";
-import { confirmationPanelHtml, thesisPanelHtml } from "./thesis-view";
+import { confirmationPanelHtml, confluencePanelHtml, thesisPanelHtml } from "./thesis-view";
 
 // ---- DOM helpers -----------------------------------------------------------
 const $ = <T extends HTMLElement>(id: string): T => {
@@ -442,7 +442,10 @@ function updateExploreReco(anchorIndex: number, anchoredFromHigh: boolean): void
     const r = scanTicker({ ticker: "symbol", candles: c }, c, cfg, forced);
     const reco = recommend({ ...recoContextFromScan(r), rsOk: null }, buildTradePlan(r));
     els.exploreReco.innerHTML =
-      recoPanelHtml(reco) + thesisPanelHtml(buildThesis(r)) + confirmationPanelHtml(r.confirmation);
+      recoPanelHtml(reco) +
+      confluencePanelHtml(r.confluence) +
+      thesisPanelHtml(buildThesis(r)) +
+      confirmationPanelHtml(r.confirmation);
   } catch {
     els.exploreReco.innerHTML = "";
   }

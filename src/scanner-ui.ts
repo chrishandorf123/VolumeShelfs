@@ -24,7 +24,7 @@ import { PROVIDERS, getProvider, type Interval } from "./data";
 import { buildDemoBenchmark, buildDemoUniverse } from "./data/universe";
 import { GATE_GLOSSARY } from "./glossary";
 import { recoPanelHtml } from "./reco-view";
-import { confirmationPanelHtml, thesisPanelHtml } from "./thesis-view";
+import { confirmationPanelHtml, confluencePanelHtml, thesisPanelHtml } from "./thesis-view";
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -340,6 +340,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
 
     els.detailPanels.innerHTML =
       recoPanel(r) +
+      confluencePanelHtml(r.confluence) +
       mainPlayPanel(r) +
       thesisPanelHtml(buildThesis(r)) +
       anchorPanel(r) +
