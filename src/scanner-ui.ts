@@ -100,6 +100,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     scanApiKey: $<HTMLInputElement>("scanApiKey"),
     runScan: $<HTMLButtonElement>("runScan"),
     advBtn: $<HTMLButtonElement>("advBtn"),
+    exportCsv: $<HTMLButtonElement>("exportCsv"),
     advanced: $("advanced"),
     thresholds: $("thresholds"),
     weights: $("weights"),
@@ -202,6 +203,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
 
   els.onlyPass.addEventListener("change", renderTable);
   els.runScan.addEventListener("click", () => void run());
+  els.exportCsv.addEventListener("click", exportResultsCsv);
 
   // ---- run ---------------------------------------------------------------
   let lastInputs: ScanInput[] = [];
@@ -303,6 +305,38 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     els.resultsBody.querySelectorAll<HTMLTableRowElement>("tr").forEach((tr) => {
       tr.addEventListener("click", () => select(tr.dataset.ticker!));
     });
+  }
+
+  /** Download the current ranked results as a CSV (the "top setups" list). */
+  function exportResultsCsv(): void {
+    const rows = els.onlyPass.checked ? results.filter((r) => r.passedAll) : results;
+    if (rows.length === 0) return;
+    const header = [
+      "Rank", "Ticker", "Score", "Confluence", "N/10", "Gates", "Verdict", "Call",
+      "Price", "Shelf", "Strength", "RS3mo%", "Reversion", "Chasing",
+    ];
+    const body = rows.map((r, i) => {
+      const reco = recommend(recoContextFromScan(r), buildTradePlan(r));
+      const shelf = r.supportShelf
+        ? `${r.supportShelf.priceLow.toFixed(2)}-${r.supportShelf.priceHigh.toFixed(2)}`
+        : "";
+      return [
+        i + 1, r.ticker, r.score.toFixed(0), r.confluence.grade, r.confluence.passed,
+        `${r.gatesPassed}/7`, reco.label, reco.headline, r.price.toFixed(2), shelf,
+        r.supportShelf ? r.supportShelf.strength.toFixed(1) : "",
+        (r.rs.excess3mo * 100).toFixed(1),
+        r.confluence.reversionIntoStrength ? "yes" : "",
+        r.confluence.chasing ? "yes" : "",
+      ];
+    });
+    const csv = [header, ...body].map((row) => row.map(csvCell).join(",")).join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "volumeshelfs-scan.csv";
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   // ---- detail ------------------------------------------------------------
@@ -561,6 +595,11 @@ function fmtPct(v: number): string {
 }
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+}
+/** Quote a CSV cell if it contains a comma, quote or newline. */
+function csvCell(v: unknown): string {
+  const s = String(v);
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 // re-exported for parity with chart formatting
 export { formatVolume };
