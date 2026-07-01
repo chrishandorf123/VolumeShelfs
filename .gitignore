@@ -5,3 +5,8 @@ dist/
 *.log
 .vite/
 coverage/
+
+# workflow-agent scratch files
+src/core/_*.ts
+src/core/zz_*.ts
+src/**/*_probe*.ts

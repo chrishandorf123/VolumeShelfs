@@ -471,29 +471,40 @@ export function scanTicker(
     passedAll,
     gatesPassed,
     factors,
-    score: 0,
+    score: scoreOf(factors, config.weights),
   };
 }
 
-/** Min-max normalize to 0..1; `invert` for "lower is better" factors. */
-function normalize(values: number[], invert: boolean): number[] {
-  const finite = values.filter((v) => Number.isFinite(v));
-  if (finite.length === 0) return values.map(() => 0);
-  const min = Math.min(...finite);
-  const max = Math.max(...finite);
-  const span = max - min;
-  return values.map((v) => {
-    if (!Number.isFinite(v)) return 0; // missing factor => worst
-    if (span === 0) return 0.5;
-    const t = (v - min) / span;
-    return invert ? 1 - t : t;
-  });
+/**
+ * Weighted 0..100 score from ABSOLUTE factor qualities (not relative to the
+ * scanned set), so the score means the same thing whether you scan one ticker
+ * or a hundred — a min-max normalization made a single-name or all-tied scan
+ * collapse to a meaningless ~0.5. Unbounded factors are squashed to a band.
+ */
+function scoreOf(f: ScanFactors, w: ScanWeights): number {
+  const ideal = clamp01(f.ideal);
+  const gap = clamp01(f.gapQuality);
+  const rs = clamp01(0.5 + f.rsExcess * 2.5); // ±20% excess return spans the range
+  const avwap = clamp01(f.avwap);
+  const pinch = Number.isFinite(f.pinchSpread) ? clamp01(1 - f.pinchSpread / 0.05) : 0;
+  const contraction = Number.isFinite(f.contraction) ? clamp01((1.1 - f.contraction) / 0.4) : 0.5;
+  const confluence = clamp01(f.confluence / 10);
+  const wSum = w.ideal + w.gap + w.rs + w.avwap + w.pinch + w.contraction + w.confluence || 1;
+  const raw =
+    ideal * w.ideal +
+    gap * w.gap +
+    rs * w.rs +
+    avwap * w.avwap +
+    pinch * w.pinch +
+    contraction * w.contraction +
+    confluence * w.confluence;
+  return (raw / wSum) * 100;
 }
 
 /**
- * Score and rank a universe. Each factor is min-max normalized across the
- * scanned set, then combined with the configured weights into a 0..100 score.
- * Results are returned sorted best-first.
+ * Rank a scanned universe best-first. Each ticker already carries an absolute
+ * 0..100 score; ordering is by whether it passes all gates, then the hard-gate
+ * count (so a clean downtrend can't outrank a genuine leader), then the score.
  */
 export function scanUniverse(
   inputs: ScanInput[],
@@ -503,31 +514,6 @@ export function scanUniverse(
   const results = inputs.map((input) => scanTicker(input, benchmark, config));
   if (results.length === 0) return results;
 
-  const idealN = normalize(results.map((r) => r.factors.ideal), false);
-  const gapN = normalize(results.map((r) => r.factors.gapQuality), false);
-  const rsN = normalize(results.map((r) => r.factors.rsExcess), false);
-  const avwapN = normalize(results.map((r) => r.factors.avwap), false);
-  const pinchN = normalize(results.map((r) => r.factors.pinchSpread), true);
-  const contractN = normalize(results.map((r) => r.factors.contraction), true);
-  const confluenceN = normalize(results.map((r) => r.factors.confluence), false);
-
-  const w = config.weights;
-  const wSum = w.ideal + w.gap + w.rs + w.avwap + w.pinch + w.contraction + w.confluence || 1;
-
-  results.forEach((r, i) => {
-    const raw =
-      idealN[i] * w.ideal +
-      gapN[i] * w.gap +
-      rsN[i] * w.rs +
-      avwapN[i] * w.avwap +
-      pinchN[i] * w.pinch +
-      contractN[i] * w.contraction +
-      confluenceN[i] * w.confluence;
-    r.score = (raw / wSum) * 100;
-  });
-
-  // Rank by the hard-gate count first (so a clean downtrend with a tight pinch
-  // can't outrank a genuine leader), then by the continuous factor score.
   const hardGates = (r: ScanResult) =>
     (r.gates.liquidity.pass ? 1 : 0) +
     (r.gates.trend.pass ? 1 : 0) +

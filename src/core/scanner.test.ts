@@ -100,4 +100,17 @@ describe("scanUniverse", () => {
     expect(weak.gates.liquidity.pass).toBe(false);
     expect(weak.passedAll).toBe(false);
   });
+
+  it("gives a meaningful ABSOLUTE score even for a single-ticker scan", () => {
+    // A constructive name scanned ALONE must still outscore a broken one scanned
+    // alone — the old min-max normalization collapsed both to ~50.
+    const strong = scanUniverse([{ ticker: "S", candles: shelfThenUptrend() }], benchmark);
+    const weak = scanUniverse(
+      [{ ticker: "W", candles: makeSeries(300, (i) => 50 * Math.pow(0.997, i), () => 200_000) }],
+      benchmark,
+    );
+    expect(strong[0].score).toBeGreaterThan(weak[0].score);
+    expect(strong[0].score).toBeGreaterThanOrEqual(0);
+    expect(strong[0].score).toBeLessThanOrEqual(100);
+  });
 });
