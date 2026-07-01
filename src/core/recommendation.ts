@@ -39,6 +39,8 @@ export interface RecoContext {
   confluencePassed?: number;
   /** Price is 2+ SD above its anchored mean — extended, so don't chase it. */
   chasing?: boolean;
+  /** OBV isn't confirming the up-move (thinning participation). */
+  obvDivergence?: boolean;
 }
 
 export interface Recommendation {
@@ -143,6 +145,7 @@ export function recommend(ctx: RecoContext, plan: TradePlan | null): Recommendat
       if (ctx.gapActive) reasoning.push("There's a low-volume air pocket just above — price can travel fast to the target.");
       if (ctx.rsOk === true) reasoning.push("It's also stronger than the market (good relative strength).");
       else if (ctx.rsOk === false) reasoning.push("Note: it's lagging the market a bit — leaders are cleaner.");
+      if (ctx.obvDivergence) reasoning.push("Caution: OBV isn't confirming the up-move (thinning participation) — size smaller or keep the stop tight.");
     }
   } else {
     // Structure is there, but the AVWAP isn't confirming yet.
@@ -234,5 +237,6 @@ export function recoContextFromScan(result: ScanResult): RecoContext {
     gapActive: result.gates.gap.pass,
     confluencePassed: result.confluence.passed,
     chasing: result.confluence.chasing,
+    obvDivergence: result.confirmation.obv.bearishDivergence,
   };
 }

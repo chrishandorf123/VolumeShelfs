@@ -120,7 +120,9 @@ export function computeConfluence(inp: ConfluenceInputs): ConfluenceScore {
   const riskPct = price > 0 ? risk / price : NaN;
   const rr = risk > 0 ? (inp.overheadTarget - price) / risk : 0;
 
-  const reversal = bullishReversalBar(candles);
+  // The trigger can be today's bar or the one just before it (a reversal that's
+  // now being confirmed) — either counts as "the level has reacted".
+  const reversal = bullishReversalBar(candles) || bullishReversalBar(candles.slice(0, -1));
   const benchOk = benchmarkHealthy(inp.benchmark);
   const weeklyOk = weeklyUptrend(candles);
 
