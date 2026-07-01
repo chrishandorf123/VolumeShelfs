@@ -108,6 +108,11 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     detailPanels: $("detailPanels"),
   };
 
+  // Restore the saved watchlist + benchmark so users don't retype every time.
+  els.tickers.value = localStorage.getItem("vs.tickers") ?? "";
+  const savedBench = localStorage.getItem("vs.bench");
+  if (savedBench) els.benchmark.value = savedBench;
+
   // ---- provider dropdown (real providers only) --------------------------
   for (const p of PROVIDERS.filter((p) => p.id !== "sample")) {
     const opt = document.createElement("option");
@@ -229,6 +234,9 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     if (symbols.length === 0) throw new Error("Enter at least one ticker");
 
     const benchSym = els.benchmark.value.trim().toUpperCase() || "SPY";
+    // Persist the watchlist + benchmark for next time.
+    localStorage.setItem("vs.tickers", els.tickers.value);
+    localStorage.setItem("vs.bench", benchSym);
     setStatus(`Fetching benchmark ${benchSym}…`);
     lastBenchmark = await provider.fetchCandles({ symbol: benchSym, interval: "daily" as Interval }, apiKey || undefined);
 
