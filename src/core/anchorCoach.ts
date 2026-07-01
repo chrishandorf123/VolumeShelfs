@@ -85,12 +85,21 @@ export function anchorCoach(candles: Candle[], window: number = COACH_WINDOW): A
     : extremeIndex(candles, from, lastAllowed, "high");
   const sigLow = significance(candles, lowIdx, "low");
   const sigHigh = significance(candles, highIdx, "high");
-  // Bias toward the low (the common case); the high must clearly win.
-  const recommendedKind: "low" | "high" = sigHigh >= sigLow + HIGH_MARGIN ? "high" : "low";
+  const price = candles[n - 1].close;
+  const lowPrice = candles[lowIdx].low;
+  const highPrice = candles[highIdx].high;
+  // Price position decides the anchor first; significance only breaks the tie in
+  // the normal pullback zone. If price has broken *below* the swing low, that low
+  // is no longer support — it's overhead — so anchor the high to read the supply.
+  // If price is above the swing high (new highs), anchor the low for the base.
+  let recommendedKind: "low" | "high";
+  if (price < lowPrice) recommendedKind = "high";
+  else if (price > highPrice) recommendedKind = "low";
+  else recommendedKind = sigHigh >= sigLow + HIGH_MARGIN ? "high" : "low";
 
   const low: AnchorSuggestion = {
     index: lowIdx,
-    price: candles[lowIdx].low,
+    price: lowPrice,
     time: candles[lowIdx].time,
     kind: "low",
     significance: sigLow,
@@ -99,7 +108,7 @@ export function anchorCoach(candles: Candle[], window: number = COACH_WINDOW): A
   };
   const high: AnchorSuggestion = {
     index: highIdx,
-    price: candles[highIdx].high,
+    price: highPrice,
     time: candles[highIdx].time,
     kind: "high",
     significance: sigHigh,
@@ -107,10 +116,15 @@ export function anchorCoach(candles: Candle[], window: number = COACH_WINDOW): A
     label: "Major swing high",
   };
 
-  const rationale =
-    recommendedKind === "high"
-      ? `Price has pulled back off the ${fmt(high.price)} swing high (${dateOf(high.time)}). Anchor from that high to see the overhead supply — the trapped buyers ("break-even supply") that price has to clear on the way up. You can still anchor the swing low to check for support underneath.`
-      : `Price is holding above the ${fmt(low.price)} swing low (${dateOf(low.time)}). Anchor from that low to see the support built on the way up — the "break-even demand" that tends to hold price. You can still anchor the swing high to check overhead resistance.`;
+  let rationale: string;
+  if (recommendedKind === "high") {
+    rationale =
+      price < lowPrice
+        ? `Price has broken below the ${fmt(low.price)} swing low and now trades at ${fmt(price)} — that former support has become overhead resistance. Anchor from the ${fmt(high.price)} swing high (${dateOf(high.time)}) to see the full stack of break-even supply price has to reclaim to turn back up.`
+        : `Price has pulled back off the ${fmt(high.price)} swing high (${dateOf(high.time)}) to ${fmt(price)}. Anchor from that high to see the overhead supply — the trapped buyers ("break-even supply") price has to clear on the way up. You can still anchor the swing low to check for support underneath.`;
+  } else {
+    rationale = `Price is holding above the ${fmt(low.price)} swing low (${dateOf(low.time)}) at ${fmt(price)}. Anchor from that low to see the support built on the way up — the "break-even demand" that tends to hold price. You can still anchor the swing high to check overhead resistance.`;
+  }
 
   return { low, high, recommendedKind, rationale };
 }

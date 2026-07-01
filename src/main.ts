@@ -15,6 +15,7 @@ import {
   type AnalysisOptions,
   type AnchorCoach,
   type Candle,
+  type ChosenAnchor,
 } from "./core";
 import { VolumeShelfsChart, type ChartModel } from "./chart/chart";
 import { PROVIDERS, getProvider, parseCsv, type Interval } from "./data";
@@ -209,6 +210,16 @@ function recompute(): void {
   };
   chart.setModel(model);
   renderSidebar(model);
+
+  // Keep the verdict / bull-&-bear thesis / confirmation on the SAME anchor as
+  // the chart, so their levels can never contradict what you're looking at.
+  const anchoredFromHigh =
+    state.anchorMode === "auto-high"
+      ? true
+      : state.anchorMode === "auto-low"
+        ? false
+        : isHighAnchorBar(c, anchor);
+  updateExploreReco(anchor, anchoredFromHigh);
 }
 
 /** Render the interactive Anchor Coach: which pivot to anchor from, and why. */
@@ -388,15 +399,47 @@ function initTimeframe(): void {
   });
 }
 
-/** Plain-English verdict for the single loaded symbol (RS unknown without a benchmark). */
-function updateExploreReco(): void {
+/**
+ * Is the anchor bar nearer a local high or a local low? Used to label a manual
+ * anchor so the scan reads it the same way the chart shows it.
+ */
+function isHighAnchorBar(candles: Candle[], index: number, look = 20): boolean {
+  const n = candles.length;
+  const lo = Math.max(0, index - look);
+  const hi = Math.min(n - 1, index + look);
+  let maxH = -Infinity;
+  let minL = Infinity;
+  for (let i = lo; i <= hi; i++) {
+    if (candles[i].high > maxH) maxH = candles[i].high;
+    if (candles[i].low < minL) minL = candles[i].low;
+  }
+  const bar = candles[index];
+  return maxH - bar.high <= bar.low - minL; // closer to the top => a high anchor
+}
+
+/**
+ * Plain-English verdict + bull/bear thesis + confirmation for the loaded symbol,
+ * computed from the SAME anchor the chart is using (RS unknown without a
+ * benchmark). Kept in lock-step with the chart so the levels never contradict it.
+ */
+function updateExploreReco(anchorIndex: number, anchoredFromHigh: boolean): void {
   const c = state.candles;
   if (c.length < 20) {
     els.exploreReco.innerHTML = "";
     return;
   }
   try {
-    const r = scanTicker({ ticker: "symbol", candles: c }, c, DEFAULT_SCAN_CONFIG);
+    const cfg = {
+      ...DEFAULT_SCAN_CONFIG,
+      rows: state.options.rowCount,
+      scale: state.options.scale,
+      valueAreaFraction: state.options.valueAreaFraction,
+    };
+    const forced: ChosenAnchor = {
+      index: Math.min(Math.max(anchorIndex, 0), c.length - 1),
+      label: anchoredFromHigh ? "swing-high" : "swing-low",
+    };
+    const r = scanTicker({ ticker: "symbol", candles: c }, c, cfg, forced);
     const reco = recommend({ ...recoContextFromScan(r), rsOk: null }, buildTradePlan(r));
     els.exploreReco.innerHTML =
       recoPanelHtml(reco) + thesisPanelHtml(buildThesis(r)) + confirmationPanelHtml(r.confirmation);
@@ -405,10 +448,9 @@ function updateExploreReco(): void {
   }
 }
 
-/** Run after a new series loads: apply the chosen timeframe and refresh the verdict. */
+/** Run after a new series loads: apply the chosen timeframe (verdict already rendered by recompute). */
 function afterLoad(): void {
   chart.setVisibleCount(activeTfBars());
-  updateExploreReco();
 }
 
 // ---- options wiring --------------------------------------------------------

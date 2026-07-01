@@ -52,4 +52,22 @@ describe("anchorCoach", () => {
     // The short-window low must actually sit inside that window.
     expect(short.low.index).toBeGreaterThanOrEqual(series.length - 60);
   });
+
+  it("never claims 'holding above' the swing low when price has broken below it", () => {
+    // Rally to a high, then a long decline that ends at new lows — so the
+    // windowed swing low ends up ABOVE the final price.
+    const broke = buildPhasedSeries(11, 30, [
+      { bars: 40, drift: 0.0, vol: 0.02, volume: 2_000_000 },
+      { bars: 30, drift: 0.012, vol: 0.02, volume: 2_000_000 }, // up to a high
+      { bars: 90, drift: -0.015, vol: 0.025, volume: 2_000_000 }, // long decline to new lows
+    ]);
+    const c = anchorCoach(broke)!;
+    const lastClose = broke[broke.length - 1].close;
+    // Precondition: the detected swing low sits above the current price.
+    expect(c.low.price).toBeGreaterThan(lastClose);
+    // Then it must recommend the HIGH and must NOT claim price is holding above.
+    expect(c.recommendedKind).toBe("high");
+    expect(c.rationale.toLowerCase()).not.toContain("holding above");
+    expect(c.rationale.toLowerCase()).toContain("broken below");
+  });
 });
