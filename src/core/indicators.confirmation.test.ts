@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { emaSeries, macd, percentRange, rsiSeries } from "./indicators";
+import { emaSeries, macd, obvSeries, percentRange, rsiSeries } from "./indicators";
 import type { Candle } from "./types";
 
 describe("emaSeries", () => {
@@ -42,6 +42,26 @@ describe("rsiSeries", () => {
     const rDown = rsiSeries(down, 14);
     expect(rUp[rUp.length - 1]).toBeCloseTo(100);
     expect(rDown[rDown.length - 1]).toBeLessThan(5);
+  });
+});
+
+describe("obvSeries", () => {
+  const c = (close: number, prevClose: number): Candle => ({
+    time: 0,
+    open: prevClose,
+    high: Math.max(close, prevClose),
+    low: Math.min(close, prevClose),
+    close,
+    volume: 100,
+  });
+  it("adds volume on up-closes and subtracts on down-closes", () => {
+    // closes: 10, 11 (up +100), 10.5 (down -100), 12 (up +100)
+    const bars = [c(10, 10), c(11, 10), c(10.5, 11), c(12, 10.5)];
+    const obv = obvSeries(bars);
+    expect(obv[0]).toBe(0);
+    expect(obv[1]).toBe(100);
+    expect(obv[2]).toBe(0);
+    expect(obv[3]).toBe(100);
   });
 });
 

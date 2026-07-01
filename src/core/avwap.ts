@@ -67,7 +67,13 @@ export interface AvwapInputs {
  */
 export function computeAvwapAnchors(candles: Candle[], inputs: AvwapInputs = {}): AvwapAnchor[] {
   const window = inputs.window ?? BARS_52W;
+  // The full anchor set Wujastyk stacks for the pinch: the all-time high/low
+  // (over the loaded history), the 52-week high/low, the year open, and — when
+  // supplied — last earnings. Duplicates (e.g. ATH == 52w high) are dropped
+  // below, so a fresh high just collapses to one line.
   const specs: Array<{ label: string; index: number }> = [
+    { label: "All-time high", index: index52wHigh(candles, candles.length) },
+    { label: "All-time low", index: index52wLow(candles, candles.length) },
     { label: "52w high", index: index52wHigh(candles, window) },
     { label: "52w low", index: index52wLow(candles, window) },
     { label: "YTD open", index: indexYtdOpen(candles) },

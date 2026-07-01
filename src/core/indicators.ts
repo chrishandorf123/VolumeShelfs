@@ -215,6 +215,20 @@ export function percentRange(candles: Candle[], period = 14): number {
 }
 
 /**
+ * On-Balance Volume: a running total that adds the bar's volume on an up-close
+ * and subtracts it on a down-close. A rising OBV before price breaks out is
+ * early evidence of accumulation; OBV falling while price rises is a divergence.
+ */
+export function obvSeries(candles: Candle[]): number[] {
+  const out = new Array<number>(candles.length).fill(0);
+  for (let i = 1; i < candles.length; i++) {
+    const dir = Math.sign(candles[i].close - candles[i - 1].close);
+    out[i] = out[i - 1] + dir * candles[i].volume;
+  }
+  return out;
+}
+
+/**
  * Whether the latest bar is a bullish reversal candle — a hammer / pin bar (long
  * lower wick, small body near the top, closes up) or a bullish engulfing (a down
  * bar followed by an up bar that engulfs its body). The price-action trigger

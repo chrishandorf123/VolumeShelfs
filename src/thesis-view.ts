@@ -90,6 +90,7 @@ export function confirmationPanelHtml(conf: Confirmation): string {
       <div class="stat"><span class="k">RSI (14)</span><span class="v ${rsiCls}">${Number.isFinite(conf.rsi.value) ? conf.rsi.value.toFixed(0) : "—"} · ${conf.rsi.state}</span></div>
       <div class="stat"><span class="k">% range</span><span class="v">${pct}</span></div>
       <div class="stat"><span class="k">5-day MA</span><span class="v ${conf.ma5Rising ? "pos" : ""}">${conf.ma5Rising ? "rising" : "flat/falling"}</span></div>
+      <div class="stat"><span class="k">OBV</span><span class="v ${conf.obv.bearishDivergence ? "neg" : conf.obv.rising ? "pos" : ""}">${conf.obv.bearishDivergence ? "divergence" : conf.obv.rising ? "rising" : "flat"}</span></div>
     </div>
     <ul class="reco-why confirm-notes">${notes}</ul>
   </div>`;

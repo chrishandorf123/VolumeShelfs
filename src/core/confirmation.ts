@@ -1,5 +1,5 @@
 import type { AnchoredVolumeProfile, Candle } from "./types";
-import { macd, percentRange, rsiLast, slopeOf, smaSeries } from "./indicators";
+import { macd, obvSeries, percentRange, rsiLast, slopeOf, smaSeries } from "./indicators";
 
 /**
  * Wujastyk's secondary-confirmation layer — the momentum/oscillator reads he
@@ -20,6 +20,8 @@ export interface Confirmation {
   /** 0..1 position of the close within its 14-bar range (0 = low, 1 = high). */
   pctRange: number;
   ma5Rising: boolean;
+  /** On-Balance Volume read: accumulation trend + a price/volume divergence flag. */
+  obv: { rising: boolean; bearishDivergence: boolean };
   /** Wujastyk's published mean-reversion-into-strength scanner filter. */
   meanReversionSetup: boolean;
   /** Count of confirming momentum reads (MACD up, RSI not overbought, 5 SMA up). */
@@ -58,6 +60,13 @@ export function computeConfirmation(inp: ConfirmationInputs): Confirmation {
   const ma5 = smaSeries(closes, 5);
   const ma5Rising = slopeOf(ma5, 3, 0) === "rising";
 
+  // OBV accumulation + divergence: over ~20 bars, is OBV rising, and is price
+  // making progress the volume isn't backing (price up while OBV isn't)?
+  const obv = obvSeries(inp.candles);
+  const obvRising = slopeOf(obv, 20, 0) === "rising";
+  const priceUp20 = i >= 20 && closes[i] > closes[i - 20];
+  const bearishDivergence = priceUp20 && slopeOf(obv, 20, 0) !== "rising";
+
   const poc = inp.profile.poc.mid;
   const meanReversionSetup =
     inp.price > poc &&
@@ -92,6 +101,11 @@ export function computeConfirmation(inp: ConfirmationInputs): Confirmation {
     );
   }
   notes.push(ma5Rising ? "The 5-day average is rising — the short-term trend has turned up." : "The 5-day average is flat/falling — no short-term thrust yet.");
+  if (bearishDivergence) {
+    notes.push("Divergence: price is higher but OBV isn't confirming — thinning participation, so tighten or skip.");
+  } else if (obvRising) {
+    notes.push("OBV is rising — accumulation is showing up ahead of price (early confirmation).");
+  }
   if (meanReversionSetup) {
     notes.push(
       "Wujastyk mean-reversion-into-strength: above the POC and 200-day with a rising 5-day, still below the anchored VWAP — room to run up to the mean.",
@@ -103,6 +117,7 @@ export function computeConfirmation(inp: ConfirmationInputs): Confirmation {
     rsi: { value: rsi, state: rsiState },
     pctRange: pct,
     ma5Rising,
+    obv: { rising: obvRising, bearishDivergence },
     meanReversionSetup,
     score,
     notes,
