@@ -498,6 +498,14 @@ function afterLoad(): void {
   chart.setVisibleCount(activeTfBars());
 }
 
+// Debounce the full recompute (it runs a whole scan) so dragging a slider on a
+// long series stays smooth rather than re-scanning on every input tick.
+let recomputeTimer: ReturnType<typeof setTimeout> | undefined;
+function scheduleRecompute(delay = 140): void {
+  clearTimeout(recomputeTimer);
+  recomputeTimer = setTimeout(recompute, delay);
+}
+
 // ---- options wiring --------------------------------------------------------
 function persistOptions(): void {
   localStorage.setItem(LS.opts, JSON.stringify(state.options));
@@ -547,7 +555,7 @@ function initControls(): void {
     state.options.rowCount = Number(els.rows.value);
     syncOptionLabels();
     persistOptions();
-    recompute();
+    scheduleRecompute(); // debounce the full re-scan while dragging
   });
   els.scale.addEventListener("change", () => {
     state.options.scale = els.scale.value as AnalysisOptions["scale"];
@@ -558,7 +566,7 @@ function initControls(): void {
     state.options.valueAreaFraction = Number(els.va.value) / 100;
     syncOptionLabels();
     persistOptions();
-    recompute();
+    scheduleRecompute();
   });
   for (const t of [els.tShelves, els.tGaps, els.tProfile, els.tVa]) {
     t.addEventListener("change", recompute);
