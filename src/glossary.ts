@@ -121,11 +121,19 @@ export const GLOSSARY: GlossaryEntry[] = [
   },
   {
     id: "avwap-bands",
-    term: "AVWAP bands (±1σ)",
-    short: "Lines one standard deviation above and below the AVWAP that show how stretched price is.",
+    term: "AVWAP bands (±1σ / ±2σ)",
+    short: "Lines one and two standard deviations from the AVWAP that show how stretched price is.",
     plain:
-      "Around the AVWAP line, the app draws an upper and a lower band set one standard deviation (a measure of how much price normally wanders) away from it. It measures this from the volume-weighted spread of prices since the anchor, so the bands widen when trading is choppy and tighten when it is calm. When price pushes near or past a band, it is stretched far from the average and may be due for a pause or pullback.",
-    why: "The bands tell you if you're chasing an over-extended move or entering while price is still close to fair value, and they help project realistic targets.",
+      "Around the AVWAP line, the app draws bands one and two standard deviations (a measure of how much price normally wanders) away from it, measured from the volume-weighted spread of prices since the anchor — so they widen when trading is choppy and tighten when it is calm. Price sits inside ±1σ most of the time (the normal range). Reaching ±2σ is stretched: the upper 2σ is a take-profit / don't-initiate zone, and the lower 2σ is the deep reversion-into-support zone where a bounce back toward the mean is likely.",
+    why: "The bands tell you if you're chasing an over-extended move or entering while price is still close to fair value, and they help project realistic targets — the whole 'am I chasing?' check.",
+  },
+  {
+    id: "obv",
+    term: "OBV (On-Balance Volume)",
+    short: "A running volume tally that rises on up days and falls on down days.",
+    plain:
+      "On-Balance Volume adds the day's volume when price closes up and subtracts it when price closes down, keeping a running total. The line itself doesn't matter — its direction does. When OBV is rising, buyers are accumulating (often before price breaks out), which is early confirmation. When price is making higher highs but OBV isn't keeping up, that's a divergence: fewer participants are backing the move, so it's more likely to fail.",
+    why: "It separates a real, well-supported move from a thin one — a reason to take a setup with conviction, or to tighten up and skip one that volume isn't confirming.",
   },
   {
     id: "gates",
