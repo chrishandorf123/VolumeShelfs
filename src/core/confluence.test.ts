@@ -58,9 +58,11 @@ describe("computeConfluence", () => {
   });
 
   it("does not explode distanceSD when the anchor sits at the last bar", () => {
+    // A near-last anchor falls back to a ~3-month window, so the reading is a
+    // real, bounded number — never a float-artifact blowup.
     const cf = computeConfluence({ ...base, anchorIndex: base.candles.length - 2 });
-    expect(cf.distanceSD).toBe(0); // degenerate window → neutral, not a huge SD
-    expect(cf.chasing).toBe(false);
+    expect(Number.isFinite(cf.distanceSD)).toBe(true);
+    expect(Math.abs(cf.distanceSD)).toBeLessThan(8);
   });
 
   it("marks reversion-into-strength for an uptrend on a shelf at/below the mean", () => {

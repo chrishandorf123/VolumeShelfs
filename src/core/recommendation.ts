@@ -160,7 +160,11 @@ export function recommend(ctx: RecoContext, plan: TradePlan | null): Recommendat
   }
 
   const headline = buildHeadline(verdict, ctx, plan);
-  return { verdict, label: LABEL[verdict], headline, reasoning, confidence: confidenceOf(ctx) };
+  let confidence = confidenceOf(ctx);
+  // A green-lit BUY has already cleared the hard gates + R:R, so never show it as
+  // "low" confidence (self-contradictory); floor it at medium.
+  if ((verdict === "buy" || verdict === "buy-dip") && confidence === "low") confidence = "medium";
+  return { verdict, label: LABEL[verdict], headline, reasoning, confidence };
 }
 
 function buildHeadline(verdict: Verdict, ctx: RecoContext, plan: TradePlan | null): string {

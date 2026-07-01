@@ -133,9 +133,18 @@ describe("recommend", () => {
     expect(r.headline.toLowerCase()).toContain("extended");
   });
 
-  it("keeps high confidence only with broad confluence, caps it when the scorecard is empty", () => {
+  it("keeps high confidence only with broad confluence; caps a non-buy at low when empty", () => {
     expect(recommend({ ...base, confluencePassed: 8 }, plan).confidence).toBe("high");
-    expect(recommend({ ...base, confluencePassed: 1 }, plan).confidence).toBe("low");
+    // An empty scorecard caps confidence at low — but only on a non-buy call.
+    const watch = recommend({ ...base, trendOk: false, confluencePassed: 1 }, plan);
+    expect(watch.verdict).toBe("watch");
+    expect(watch.confidence).toBe("low");
+  });
+
+  it("never shows a BUY with low confidence (floors it at medium)", () => {
+    const r = recommend({ ...base, confluencePassed: 1 }, plan);
+    expect(r.verdict).toBe("buy-dip");
+    expect(r.confidence).toBe("medium");
   });
 
   it("says AVOID when illiquid", () => {

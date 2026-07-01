@@ -97,18 +97,16 @@ export function computeConfluence(inp: ConfluenceInputs): ConfluenceScore {
   const i = candles.length - 1;
 
   // ---- exhaustion: how far price sits from the anchored mean, in SD ---------
-  const bands = anchoredVwapBands(candles, inp.anchorIndex, 1);
+  // Assess extension over a window that actually has variance: the elected anchor
+  // when it's far enough back, else a ~3-month fallback. This stops a *recent*
+  // anchor from zeroing out (and green-lighting) a genuinely extended, chase-y
+  // price, while the sigma floor still stops a degenerate 1-bar window from
+  // fabricating a huge SD.
+  const sdAnchor = Math.min(inp.anchorIndex, Math.max(0, i - 60));
+  const bands = anchoredVwapBands(candles, sdAnchor, 1);
   const mean = bands.vwap[i];
   const sigma = Number.isFinite(bands.upper[i]) ? bands.upper[i] - bands.vwap[i] : NaN;
-  // Guard against a degenerate window: when the anchor sits at (or right before)
-  // the last bar the variance is ~0, so a float artifact would blow distanceSD up
-  // to a nonsense value and trip a false chasing / not-extended read. Require a
-  // few bars of history and a meaningfully positive sigma, else treat as neutral.
-  const barsFromAnchor = i - inp.anchorIndex;
-  const distanceSD =
-    barsFromAnchor >= 10 && Number.isFinite(mean) && sigma > price * 5e-4
-      ? (price - mean) / sigma
-      : 0;
+  const distanceSD = Number.isFinite(mean) && sigma > price * 5e-4 ? (price - mean) / sigma : 0;
 
   // ---- volume conviction ----------------------------------------------------
   const avg20 = meanVolume(candles, 20);
@@ -186,7 +184,10 @@ export function computeConfluence(inp: ConfluenceInputs): ConfluenceScore {
     {
       id: "not-extended",
       tier: 6,
-      label: "Within ~1 SD of the anchored mean (not chasing)",
+      // Passing means "not stretched ABOVE the mean" — a long entry isn't
+      // chasing. Being below the mean (negative SD) is the reversion zone and
+      // also passes, so the label must not claim "within 1 SD".
+      label: "Not stretched above the anchored mean (≤ +1σ)",
       pass: distanceSD <= 1,
       detail: `${distanceSD >= 0 ? "+" : ""}${distanceSD.toFixed(1)} SD from mean`,
     },
