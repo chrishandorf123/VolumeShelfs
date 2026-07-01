@@ -4,6 +4,7 @@ import {
   DEFAULT_SCAN_CONFIG,
   analyzeProfile,
   anchorCoach,
+  buildThesis,
   buildTradePlan,
   computeAnchoredProfile,
   defaultAnchorIndex,
@@ -21,6 +22,7 @@ import { formatPrice, formatVolume } from "./chart/scale";
 import { initScanner } from "./scanner-ui";
 import { initGuide } from "./guide";
 import { recoPanelHtml } from "./reco-view";
+import { confirmationPanelHtml, thesisPanelHtml } from "./thesis-view";
 
 // ---- DOM helpers -----------------------------------------------------------
 const $ = <T extends HTMLElement>(id: string): T => {
@@ -396,7 +398,8 @@ function updateExploreReco(): void {
   try {
     const r = scanTicker({ ticker: "symbol", candles: c }, c, DEFAULT_SCAN_CONFIG);
     const reco = recommend({ ...recoContextFromScan(r), rsOk: null }, buildTradePlan(r));
-    els.exploreReco.innerHTML = recoPanelHtml(reco);
+    els.exploreReco.innerHTML =
+      recoPanelHtml(reco) + thesisPanelHtml(buildThesis(r)) + confirmationPanelHtml(r.confirmation);
   } catch {
     els.exploreReco.innerHTML = "";
   }

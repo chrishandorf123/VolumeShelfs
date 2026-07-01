@@ -28,6 +28,7 @@ import {
   type ChosenAnchor,
 } from "./anchor";
 import { detectGapPlays, selectPrimaryGapPlay, type GapPlay } from "./gapPlay";
+import { computeConfirmation, type Confirmation } from "./confirmation";
 
 /** Ranking weights. The volume-profile play (ideal shelf-at-price + gap) leads. */
 export interface ScanWeights {
@@ -150,6 +151,8 @@ export interface ScanResult {
   atrContracting: boolean;
   pullbackVolumeDrying: boolean;
   noBreakdownBar: boolean;
+  /** Secondary confirmation layer (MACD / RSI / %-range / 5 SMA + his filter). */
+  confirmation: Confirmation;
   gates: Record<GateKey, GateResult>;
   passedAll: boolean;
   /** Number of gates passed (0..7), used for ranking. */
@@ -292,6 +295,15 @@ export function scanTicker(
   };
   const avwapScore = (avwapBullish ? 0.6 : 0) + (avwapReclaim ? 0.4 : 0);
 
+  // ---- secondary confirmation (MACD / RSI / %-range / 5-SMA + his filter) --
+  const confirmation = computeConfirmation({
+    candles,
+    profile,
+    price,
+    keyAvwap: keyState.value,
+    ma200,
+  });
+
   // ---- ATR contraction & breakdown ---------------------------------------
   const atr = atrSeries(candles, 14);
   const atrNow = atr[n - 1] ?? NaN;
@@ -419,6 +431,7 @@ export function scanTicker(
     atrContracting,
     pullbackVolumeDrying,
     noBreakdownBar,
+    confirmation,
     gates,
     passedAll,
     gatesPassed,

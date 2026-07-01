@@ -2,6 +2,7 @@ import {
   DEFAULT_SCAN_CONFIG,
   anchoredVwapBands,
   anchoredVwapSeries,
+  buildThesis,
   buildTradePlan,
   defaultAnchorHighIndex,
   defaultAnchorIndex,
@@ -23,6 +24,7 @@ import { PROVIDERS, getProvider, type Interval } from "./data";
 import { buildDemoBenchmark, buildDemoUniverse } from "./data/universe";
 import { GATE_GLOSSARY } from "./glossary";
 import { recoPanelHtml } from "./reco-view";
+import { confirmationPanelHtml, thesisPanelHtml } from "./thesis-view";
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -337,7 +339,15 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     chart.setVisibleCount(activeScanTf());
 
     els.detailPanels.innerHTML =
-      recoPanel(r) + mainPlayPanel(r) + anchorPanel(r) + avwapPanel(r) + gatesPanel(r) + tradePlanPanel(r) + checklistPanel(r);
+      recoPanel(r) +
+      mainPlayPanel(r) +
+      thesisPanelHtml(buildThesis(r)) +
+      anchorPanel(r) +
+      avwapPanel(r) +
+      confirmationPanelHtml(r.confirmation) +
+      gatesPanel(r) +
+      tradePlanPanel(r) +
+      checklistPanel(r);
 
     // Wire the "try the other anchor" toggle.
     const candles = lastInputs.find((i) => i.ticker === r.ticker)?.candles ?? [];

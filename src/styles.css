@@ -1126,3 +1126,73 @@ td.tk {
     min-height: 320px;
   }
 }
+
+/* ---- bull & bear thesis ---- */
+.thesis-case {
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: 8px;
+  padding: 9px 11px;
+  margin-top: 8px;
+}
+.thesis-case.bull {
+  border-left-color: var(--up);
+  background: rgba(38, 166, 154, 0.06);
+}
+.thesis-case.bear {
+  border-left-color: var(--down);
+  background: rgba(239, 83, 80, 0.06);
+}
+.thesis-dir {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+.thesis-case.bull .thesis-dir {
+  color: var(--up);
+}
+.thesis-case.bear .thesis-dir {
+  color: var(--down);
+}
+.thesis-levels {
+  display: flex;
+  gap: 14px;
+  margin: 6px 0 4px;
+  flex-wrap: wrap;
+}
+.thesis-levels .tl {
+  display: flex;
+  flex-direction: column;
+}
+.thesis-levels .tl .k {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+}
+.thesis-levels .tl .v {
+  font-size: 14px;
+  font-weight: 600;
+}
+.thesis-detail {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+/* ---- secondary confirmation ---- */
+.mrs-badge {
+  display: inline-block;
+  margin: 2px 0 8px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #06241f;
+  background: var(--up);
+  cursor: help;
+}
+.confirm-notes {
+  margin-top: 8px;
+}

@@ -113,6 +113,108 @@ export function avgDollarVolume(candles: Candle[], period = 20): number {
 }
 
 /**
+ * Exponential moving average. Seeds from the SMA of the first `period` *finite*
+ * values, so it also works on a series with leading NaNs (e.g. a MACD line whose
+ * early bars are undefined) — the EMA simply starts at the first bar where
+ * enough finite data exists.
+ */
+export function emaSeries(values: number[], period: number): number[] {
+  const out = new Array<number>(values.length).fill(NaN);
+  if (period < 1) return out;
+  const k = 2 / (period + 1);
+  let ema = NaN;
+  let seed = 0;
+  let count = 0;
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i];
+    if (!Number.isFinite(v)) continue;
+    if (!Number.isFinite(ema)) {
+      seed += v;
+      count += 1;
+      if (count === period) {
+        ema = seed / period;
+        out[i] = ema;
+      }
+    } else {
+      ema = v * k + ema * (1 - k);
+      out[i] = ema;
+    }
+  }
+  return out;
+}
+
+export interface MacdSeries {
+  macd: number[];
+  signal: number[];
+  hist: number[];
+}
+
+/** MACD (fast/slow EMA difference) with its signal line and histogram. */
+export function macd(values: number[], fast = 12, slow = 26, signalPeriod = 9): MacdSeries {
+  const ef = emaSeries(values, fast);
+  const es = emaSeries(values, slow);
+  const line = values.map((_, i) =>
+    Number.isFinite(ef[i]) && Number.isFinite(es[i]) ? ef[i] - es[i] : NaN,
+  );
+  const signal = emaSeries(line, signalPeriod);
+  const hist = line.map((m, i) =>
+    Number.isFinite(m) && Number.isFinite(signal[i]) ? m - signal[i] : NaN,
+  );
+  return { macd: line, signal, hist };
+}
+
+/** Wilder RSI series; entries before `period` bars of change are NaN. */
+export function rsiSeries(values: number[], period = 14): number[] {
+  const n = values.length;
+  const out = new Array<number>(n).fill(NaN);
+  if (n <= period || period < 1) return out;
+  let avgGain = 0;
+  let avgLoss = 0;
+  for (let i = 1; i <= period; i++) {
+    const ch = values[i] - values[i - 1];
+    if (ch >= 0) avgGain += ch;
+    else avgLoss -= ch;
+  }
+  avgGain /= period;
+  avgLoss /= period;
+  out[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  for (let i = period + 1; i < n; i++) {
+    const ch = values[i] - values[i - 1];
+    const g = ch > 0 ? ch : 0;
+    const l = ch < 0 ? -ch : 0;
+    avgGain = (avgGain * (period - 1) + g) / period;
+    avgLoss = (avgLoss * (period - 1) + l) / period;
+    out[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  }
+  return out;
+}
+
+/** Latest RSI value, or NaN. */
+export function rsiLast(values: number[], period = 14): number {
+  const s = rsiSeries(values, period);
+  return s[s.length - 1] ?? NaN;
+}
+
+/**
+ * Where the latest close sits within its `period`-bar high/low range (Wujastyk's
+ * "% range"): 0 = at the range low, 1 = at the range high. Near the low is the
+ * mean-reversion zone; near the high is extended.
+ */
+export function percentRange(candles: Candle[], period = 14): number {
+  const n = candles.length;
+  if (n === 0) return NaN;
+  const start = Math.max(0, n - period);
+  let hi = -Infinity;
+  let lo = Infinity;
+  for (let i = start; i < n; i++) {
+    if (candles[i].high > hi) hi = candles[i].high;
+    if (candles[i].low < lo) lo = candles[i].low;
+  }
+  const span = hi - lo;
+  return span > 0 ? (candles[n - 1].close - lo) / span : 0.5;
+}
+
+/**
  * Slope classification of a series tail: compares the latest value to the value
  * `lookback` bars ago. "rising" / "falling" beyond `tolPct`, else "flat".
  */

@@ -44,7 +44,7 @@ export const GLOSSARY: GlossaryEntry[] = [
     term: "Volume gap (LVN / air pocket)",
     short: "A price zone where almost nothing traded, so price races through it.",
     plain:
-      "A volume gap, also called a Low-Volume Node (LVN) or 'air pocket', is a run of price rows that traded very little (in this app, at or below 15% of the busiest row's volume). Because barely anyone bought or sold in that zone, there are few holders to slow price down, so it tends to travel through fast. The app ignores gaps at the very top or bottom edge of the profile, since those are just the thin tails, not true vacuums in the middle.",
+      "A volume gap, also called a Low-Volume Node (LVN) or 'air pocket', is a thin band where very little traded. The app finds it the way Wujastyk reads a chart: a valley between two volume shelves whose floor dips well below the shelves that wall it in (to at most 40% of the smaller neighbouring shelf), not just a fixed percentage of the single busiest row. That relative view matters — a real gap can sit between two mid-height shelves while a distant, much fatter shelf owns the POC and makes the area look 'busy'. Because barely anyone traded there, few holders slow price down, so it travels through fast. Edge-of-profile thin tails are ignored.",
     why: "The fast travel through a gap is where the quick reward comes from, and its far edge often becomes your target.",
   },
   {
@@ -166,6 +166,30 @@ export const GLOSSARY: GlossaryEntry[] = [
     plain:
       "The app rolls the gates and levels into one clear call. AVOID means it's too thin or cheap, or a downtrend with nothing to lean on. ON WATCH means the setup is close but not ready, either a downtrend with a real shelf, or an uptrend where price hasn't pulled back to support yet. WAIT FOR RECLAIM means the shelf is there but price is still below its AVWAP break-even line, so you wait for a close back above it. BUY THE DIP or BUY is the green light: uptrend, price resting on a fat shelf, and the AVWAP confirming, with BUY reserved for when an active gap play is set to go.",
     why: "The verdict saves you from weighing seven checks yourself, giving you a single calm decision plus the exact level to act on so you don't jump in early or force a bad trade.",
+  },
+  {
+    id: "thesis",
+    term: "Bull & bear thesis",
+    short: "Both directional cases — each with a trigger, targets and an invalidation.",
+    plain:
+      "Instead of predicting one direction, the app lays out both sides, the way Wujastyk does. The bull case says: if price closes back above a specific trigger (the shelf top or POC), buyers are in control and the volume overhead becomes the target — with an invalidation just below the shelf. The bear case mirrors it: if price loses the shelf low on volume, the thin area beneath opens an air pocket down to the next shelf, and it's wrong if price reclaims the shelf. Each case is built from the actual volume structure, so the levels are concrete, not vibes.",
+    why: "Holding both cases keeps you honest: you know exactly what would confirm you're right, and exactly what says you're wrong, before you risk a cent.",
+  },
+  {
+    id: "confirmation",
+    term: "Secondary confirmation (MACD · RSI · % range)",
+    short: "Momentum reads stacked around the volume core to confirm the turn.",
+    plain:
+      "Around the volume shelf and AVWAP, Wujastyk layers momentum tools. MACD compares a fast and slow average — above its signal line means momentum is turning up. RSI (0–100) measures how stretched the recent move is — under 30 is oversold (snap-back watch), over 70 is overbought (extended). '% range' shows where price sits inside its last 14 bars, from 0% (at the low, a mean-reversion zone) to 100% (at the high, extended). The 5-day average rising shows the short-term trend has turned up. These confirm the volume read; they don't lead it.",
+    why: "The volume levels tell you where to act; these tell you whether momentum is actually turning there yet, so you don't buy a shelf that's still falling.",
+  },
+  {
+    id: "mean-reversion",
+    term: "Mean-reversion-into-strength",
+    short: "His published scanner: above POC & 200-day, 5-day rising, still below AVWAP.",
+    plain:
+      "This is the exact filter from Wujastyk's published scanner. It flags a name when four things line up: price is above the volume POC (on a volume floor), price is above the 200-day average (healthy long-term trend), the 5-day average is rising (short-term turning up), and price is still below its anchored VWAP (the average everyone paid — so there's room to run up to it). It's a 'buy strength that's temporarily below its mean' setup.",
+    why: "When all four align you get an uptrend pulling back to a floor with room to travel back up to fair value — a high-quality, repeatable entry rather than chasing.",
   },
 ];
 
