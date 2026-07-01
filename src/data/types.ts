@@ -7,6 +7,17 @@ export interface DataRequest {
   interval: Interval;
 }
 
+/** A lightweight current-price snapshot (1 API call), for the live monitor. */
+export interface Quote {
+  symbol: string;
+  price: number;
+  prevClose: number;
+  /** Today's move as a fraction (e.g. 0.012 = +1.2%). */
+  changePct: number;
+  /** Latest trading day (YYYY-MM-DD), when the provider reports it. */
+  day?: string;
+}
+
 /**
  * A pluggable market-data source. Add your own by implementing this interface
  * and registering it in `src/data/index.ts` — the UI will pick it up
@@ -24,6 +35,8 @@ export interface DataProvider {
   /** Short note rendered under the provider in the UI. */
   readonly note?: string;
   fetchCandles(req: DataRequest, apiKey?: string): Promise<Candle[]>;
+  /** Optional live-quote fetch (1 call); enables the intraday watchlist monitor. */
+  fetchQuote?(symbol: string, apiKey?: string): Promise<Quote>;
 }
 
 export class DataError extends Error {

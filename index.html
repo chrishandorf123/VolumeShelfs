@@ -170,6 +170,19 @@
           <label class="chk apex"><input type="checkbox" id="onlyPass" /> A+ only (all gates)</label>
         </section>
 
+        <section class="monitor" id="monitorSection" hidden>
+          <div class="monitor-head">
+            <h3>Live monitor <span class="tk-count" id="monitorMeta"></span></h3>
+            <div class="monitor-actions">
+              <label class="chk"><input type="checkbox" id="monitorAuto" /> Auto-refresh</label>
+              <button id="monitorNow" class="ghost" type="button" title="Fetch a current quote (1 call each, paced to your calls/min) for the ranked watchlist and show live distance to each plan's entry/stop/T1">Check prices now</button>
+            </div>
+          </div>
+          <div id="monitorBody" class="monitor-body">
+            <div class="empty">Run a live scan, then check prices to watch each name against its plan intraday.</div>
+          </div>
+        </section>
+
         <section class="advanced" id="advanced" hidden>
           <div class="adv-group">
             <h3>Thresholds</h3>

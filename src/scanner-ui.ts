@@ -7,16 +7,20 @@ import {
   defaultAnchorHighIndex,
   defaultAnchorIndex,
   detectGaps,
+  monitorRow,
   recoContextFromScan,
   recommend,
   scanTicker,
   scanUniverse,
   smaSeries,
+  sortMonitorRows,
   type ChosenAnchor,
+  type MonitorRow,
   type ProfileAnalysis,
   type ScanConfig,
   type ScanInput,
   type ScanResult,
+  type TradePlan,
 } from "./core";
 import { VolumeShelfsChart, type ChartModel, type SeriesOverlay } from "./chart/chart";
 import { formatPrice, formatVolume } from "./chart/scale";
@@ -118,6 +122,11 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     tickerCount: $("tickerCount"),
     callsPerMin: $<HTMLInputElement>("callsPerMin"),
     rateField: $("rateField"),
+    monitorSection: $("monitorSection"),
+    monitorMeta: $("monitorMeta"),
+    monitorBody: $("monitorBody"),
+    monitorAuto: $<HTMLInputElement>("monitorAuto"),
+    monitorNow: $<HTMLButtonElement>("monitorNow"),
   };
 
   const tickerList = () =>
@@ -175,6 +184,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
       els.scanProviderField.hidden = !live;
       els.rateField.hidden = !live;
       els.scanKeyField.hidden = !live || !getProvider(els.scanProvider.value)?.requiresApiKey;
+      syncMonitorVisibility();
     });
   });
 
@@ -245,6 +255,11 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
   els.onlyPass.addEventListener("change", renderTable);
   els.runScan.addEventListener("click", () => void run());
   els.exportCsv.addEventListener("click", exportResultsCsv);
+  els.monitorNow.addEventListener("click", () => void runMonitor());
+  els.monitorAuto.addEventListener("change", () => {
+    if (els.monitorAuto.checked) void runMonitor();
+    else stopMonitorTimer();
+  });
 
   // ---- run ---------------------------------------------------------------
   let lastInputs: ScanInput[] = [];
@@ -261,6 +276,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
         await loadLiveUniverse();
       }
       rankAndRender();
+      syncMonitorVisibility();
       const pass = results.filter((r) => r.passedAll).length;
       setStatus(`Scanned ${results.length} · ${pass} A+ · ${results.length - pass} partial`, "ok");
     } catch (err) {
@@ -393,6 +409,137 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     a.download = "volumeshelfs-scan.csv";
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  // ---- live intraday monitor --------------------------------------------
+  // Fetches a current quote (1 call each) for the ranked watchlist and reads
+  // each name against its saved plan: is it still setting up (WATCH), poking
+  // the trigger (APPROACHING/TRIGGERED), broken (STOPPED) or at a target (T1/T2)?
+  const MONITOR_MAX = 30; // cap so one pass stays inside a reasonable window
+  const MONITOR_GAP_MS = 30_000; // breather between auto-refresh passes
+  let monitorTimer: number | null = null;
+  let monitorRunning = false;
+
+  function syncMonitorVisibility(): void {
+    els.monitorSection.hidden = source !== "live";
+    if (source !== "live") stopMonitorTimer();
+  }
+
+  function stopMonitorTimer(): void {
+    if (monitorTimer !== null) {
+      clearTimeout(monitorTimer);
+      monitorTimer = null;
+    }
+  }
+
+  /** Re-arm the next auto-refresh pass if the toggle is on. */
+  function scheduleMonitor(): void {
+    stopMonitorTimer();
+    if (source === "live" && els.monitorAuto.checked) {
+      monitorTimer = window.setTimeout(() => void runMonitor(), MONITOR_GAP_MS);
+    }
+  }
+
+  /** The ranked names that have a concrete plan to watch (top MONITOR_MAX). */
+  function monitorTargets(): Array<{ symbol: string; plan: TradePlan }> {
+    const out: Array<{ symbol: string; plan: TradePlan }> = [];
+    for (const r of results) {
+      const plan = buildTradePlan(r);
+      if (plan) out.push({ symbol: r.ticker, plan });
+      if (out.length >= MONITOR_MAX) break;
+    }
+    return out;
+  }
+
+  async function runMonitor(): Promise<void> {
+    if (monitorRunning) return;
+    if (source !== "live") {
+      setStatus("Switch to “Ticker list → API” and run a live scan to monitor prices.", "error");
+      return;
+    }
+    const provider = getProvider(els.scanProvider.value);
+    if (!provider?.fetchQuote) {
+      setStatus(`${provider?.label ?? "This data source"} doesn't support live quotes.`, "error");
+      return;
+    }
+    const apiKey = els.scanApiKey.value.trim();
+    if (provider.requiresApiKey && !apiKey) {
+      setStatus(`${provider.label} needs an API key for live quotes.`, "error");
+      return;
+    }
+    const targets = monitorTargets();
+    if (targets.length === 0) {
+      setStatus("Run a scan first — the monitor watches the ranked names against their plans.", "error");
+      return;
+    }
+
+    monitorRunning = true;
+    els.monitorNow.disabled = true;
+    stopMonitorTimer();
+    const callsPerMin = Math.max(1, Math.min(1200, Number(els.callsPerMin.value) || 75));
+    const pacer = new Pacer(minIntervalMs(callsPerMin));
+    const rows: MonitorRow[] = [];
+    let failed = 0;
+    try {
+      for (let i = 0; i < targets.length; i++) {
+        await pacer.wait();
+        els.monitorMeta.textContent = `checking ${targets[i].symbol} (${i + 1}/${targets.length})…`;
+        try {
+          const q = await provider.fetchQuote(targets[i].symbol, apiKey || undefined);
+          rows.push(monitorRow(q, targets[i].plan));
+        } catch {
+          failed += 1; // skip a failed quote; surfaced in the count
+        }
+        renderMonitor(sortMonitorRows(rows), failed, targets.length);
+      }
+      const triggered = rows.filter((r) => r.status === "TRIGGERED" || r.status === "APPROACHING").length;
+      setStatus(
+        `Monitor: ${rows.length} quoted${failed ? `, ${failed} skipped` : ""} · ${triggered} at/near a trigger.`,
+        "ok",
+      );
+    } finally {
+      monitorRunning = false;
+      els.monitorNow.disabled = false;
+      scheduleMonitor(); // re-arm if auto-refresh is on
+    }
+  }
+
+  function renderMonitor(rows: MonitorRow[], failed: number, total: number): void {
+    const day = rows[0]?.day ? ` · ${rows[0].day}` : "";
+    els.monitorMeta.textContent = rows.length
+      ? `${rows.length}/${total} quoted${failed ? ` · ${failed} skipped` : ""}${day}`
+      : "";
+    if (rows.length === 0) {
+      els.monitorBody.innerHTML = `<div class="empty">No quotes returned (check the key / rate limit).</div>`;
+      return;
+    }
+    const body = rows
+      .map((r) => {
+        const cls = r.status.toLowerCase();
+        const chg = r.changePct >= 0 ? "pos" : "neg";
+        return `<tr data-ticker="${r.symbol}" class="mon-row mon-${cls}">
+          <td><span class="mon-badge mon-${cls}">${r.status}</span></td>
+          <td class="tk">${r.symbol}</td>
+          <td>${formatPrice(r.price)}</td>
+          <td class="${chg}">${fmtPct(r.changePct)}</td>
+          <td>${monArrow(r.toEntry)}</td>
+          <td>${monArrow(r.toStop)}</td>
+          <td>${monArrow(r.toT1)}</td>
+          <td class="mon-note muted">${escapeHtml(r.note)}</td>
+        </tr>`;
+      })
+      .join("");
+    els.monitorBody.innerHTML = `<table class="mon-table">
+      <thead><tr>
+        <th>Status</th><th>Ticker</th><th>Price</th><th>Today</th>
+        <th title="Distance to the entry trigger">→Entry</th>
+        <th title="Distance to the stop (invalidation)">→Stop</th>
+        <th title="Distance to the first target">→T1</th>
+        <th>Read</th>
+      </tr></thead><tbody>${body}</tbody></table>`;
+    els.monitorBody.querySelectorAll<HTMLTableRowElement>("tr[data-ticker]").forEach((tr) => {
+      tr.addEventListener("click", () => select(tr.dataset.ticker!));
+    });
   }
 
   // ---- detail ------------------------------------------------------------
@@ -622,8 +769,12 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     activate() {
       if (results.length === 0) void run();
       else chart?.resize();
+      syncMonitorVisibility();
+      scheduleMonitor(); // resume auto-refresh if it was left on
     },
-    deactivate() {},
+    deactivate() {
+      stopMonitorTimer(); // don't keep polling the API while the tab is hidden
+    },
   };
 }
 
@@ -632,6 +783,12 @@ function round(v: number): number {
 }
 function fmtPct(v: number): string {
   return Number.isFinite(v) ? `${v >= 0 ? "+" : ""}${(v * 100).toFixed(1)}%` : "—";
+}
+/** A signed distance-to-level, rendered with a direction arrow (↑ above, ↓ below). */
+function monArrow(frac: number): string {
+  if (!Number.isFinite(frac)) return "—";
+  const arrow = frac > 0 ? "↑" : frac < 0 ? "↓" : "·";
+  return `${(Math.abs(frac) * 100).toFixed(1)}% ${arrow}`;
 }
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
