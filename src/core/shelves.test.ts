@@ -108,6 +108,15 @@ describe("detectGaps", () => {
     expect(covering!.highIndex).toBeLessThan(9);
   });
 
+  it("reports only the true vacuum, not the shelf shoulders, as the gap", () => {
+    // Rows at 58% of the walls are shoulders, not air pocket — only row 2 (10) is.
+    const profile = profileFromVolumes([100, 58, 10, 58, 100]);
+    const gaps = detectGaps(profile, { shelfThreshold: 0.55, gapThreshold: 0.12 });
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0].lowIndex).toBe(2);
+    expect(gaps[0].highIndex).toBe(2);
+  });
+
   it("does not flag a shallow saddle between shelves as a gap", () => {
     // The dip (row 2 = 80) only eases to ~80% of its walls — not an air pocket.
     const profile = profileFromVolumes([100, 95, 80, 96, 100]);

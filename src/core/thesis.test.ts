@@ -37,6 +37,21 @@ describe("buildThesis", () => {
     expect(bull.detail.toLowerCase()).toContain("bull case");
     expect(bear.detail.toLowerCase()).toContain("bear case");
   });
+
+  it("never puts the bull invalidation at/above the trigger, even with an active gap play", () => {
+    // Sweep seeds: with a gap play active while price sits inside a higher shelf,
+    // the old code could put invalidation above the trigger (invalid on trigger).
+    for (let seed = 1; seed <= 120; seed++) {
+      const s = buildPhasedSeries(seed, 12, [
+        { bars: 40, drift: 0.0, vol: 0.015, volume: 2_000_000 },
+        { bars: 120, drift: 0.006, vol: 0.02, volume: 2_000_000 },
+        { bars: 30, drift: -0.003, vol: 0.02, volume: 2_000_000 },
+      ]);
+      const sr = scanTicker({ ticker: "T", candles: s }, s);
+      const { bull } = buildThesis(sr);
+      expect(bull.invalidation).toBeLessThan(bull.trigger);
+    }
+  });
 });
 
 describe("scanTicker confirmation", () => {

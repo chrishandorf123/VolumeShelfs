@@ -67,7 +67,13 @@ export function buildThesis(r: ScanResult): DualThesis {
   }
   let bullT2 = bullFar ?? (above ? above.priceHigh : Math.max(vah, bullT1) * 1.03);
   if (!(bullT2 > bullT1)) bullT2 = bullT1 * 1.05;
-  const bullInvalid = support ? support.priceLow * 0.995 : Math.min(val, price * 0.95);
+  // Invalidation must come from the SAME shelf the trigger does, and always sit
+  // below the trigger — otherwise an active gap play (trigger = its launch-shelf
+  // top) paired with a higher support shelf's low could put "invalid" above the
+  // trigger, i.e. wrong the instant it fires.
+  let bullInvalid = gp && gp.active ? gp.stop : support ? support.priceLow * 0.995 : Math.min(val, price * 0.95);
+  if (!(bullInvalid < bullTrigger)) bullInvalid = bullTrigger * 0.995;
+  const triggerShelfWord = gp && gp.active ? "launch shelf top" : support ? "shelf top" : "reclaim level";
   const bull: ThesisCase = {
     direction: "bull",
     trigger: bullTrigger,
@@ -75,7 +81,7 @@ export function buildThesis(r: ScanResult): DualThesis {
     invalidation: bullInvalid,
     headline: `Above ${money(bullTrigger)} → ${money(bullT1)} / ${money(bullT2)}, invalid below ${money(bullInvalid)}`,
     detail:
-      `Bull case: a close back above ${money(bullTrigger)} (the ${support ? "shelf top" : "reclaim level"}${poc >= price ? " / POC" : ""}) puts buyers in control — ` +
+      `Bull case: a close back above ${money(bullTrigger)} (the ${triggerShelfWord}${poc >= price ? " / POC" : ""}) puts buyers in control — ` +
       `the volume overhead is the fuel. First target ${money(bullT1)}, then ${money(bullT2)}${above && bullFar === null ? " (the next shelf)" : ""}. ` +
       (bullFar !== null ? `There's no heavy resistance until ${money(bullFar)} — an open runway above. ` : "") +
       `Wrong on a decisive close below ${money(bullInvalid)} (loses the shelf).`,

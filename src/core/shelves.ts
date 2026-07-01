@@ -136,9 +136,6 @@ export function detectGaps(
 
   // Rule 2: relative valley between two shelf peaks (local maxima).
   const wallFraction = params.gapWallFraction ?? 0.4;
-  // The visible band grows out from the valley floor until rows climb back near
-  // the shelves; keep it at least as wide as the vacuum itself.
-  const bandFraction = Math.max(0.6, wallFraction);
   const mean = totalVolume / n;
   const win = Math.max(2, Math.round(n * 0.06));
   const peaks = shelfPeaks(bins, mean, win);
@@ -152,7 +149,10 @@ export function detectGaps(
     }
     const wall = Math.min(bins[a].volume, bins[b].volume);
     if (bins[valleyIdx].volume > wall * wallFraction) continue; // not a real vacuum
-    const level = wall * bandFraction;
+    // The band is exactly the sub-threshold vacuum — rows that dip to <= the same
+    // fraction of the wall — so the reported gap is never wider than the air
+    // pocket itself (a 58%-of-shelf shoulder row is not swallowed into it).
+    const level = wall * wallFraction;
     let lo = valleyIdx;
     while (lo - 1 > a && bins[lo - 1].volume <= level) lo--;
     let hi = valleyIdx;

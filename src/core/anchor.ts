@@ -108,12 +108,27 @@ export function significance(candles: Candle[], idx: number, kind: "high" | "low
   let sideTerm = kind === "high" ? 1 - pos : pos;
 
   if (kind === "high") {
+    // A swing high stops being meaningful overhead supply only once price has
+    // GENUINELY reclaimed it — currently trading above, or a sustained run of
+    // closes above. A single transient poke (a failed-breakout / bull-trap bar
+    // that immediately reverses) must NOT slash its significance, or the
+    // election flips to the trap bar and every level anchors off the wrong bar.
+    const thresh = ext * (1 + RECLAIM);
+    const reclaimedNow = price > thresh;
+    let run = 0;
+    let sustained = false;
     for (let i = idx; i < n; i++) {
-      if (candles[i].close > ext * (1 + RECLAIM)) {
-        sideTerm *= 0.25;
-        break;
+      if (candles[i].close > thresh) {
+        run += 1;
+        if (run >= 3) {
+          sustained = true;
+          break;
+        }
+      } else {
+        run = 0;
       }
     }
+    if (reclaimedNow || sustained) sideTerm *= 0.25;
   }
   return 0.55 * sideTerm + 0.3 * magTerm + 0.15 * recTerm;
 }

@@ -99,4 +99,24 @@ describe("significance", () => {
     // The reclaim guard knocks the high's side term down to ~0.
     expect(reclaimedHigh).toBeLessThan(dominantLow * 0.6);
   });
+
+  it("does NOT discount a swing high on a single transient poke above it", () => {
+    // Pivot high at index 30 (~50), then a decline into a base price trades in.
+    const path = (i: number) =>
+      i <= 30
+        ? 30 + (50 - 30) * (i / 30)
+        : i <= 150
+          ? 50 + (34 - 50) * ((i - 30) / 120)
+          : 34 + Math.sin((i - 150) / 6);
+    const clean = makeSeries(220, path, () => 2_000_000);
+    const hi = 30;
+    const cleanSig = significance(clean, hi, "high");
+    // Inject ONE failed-breakout bar 3% above the pivot high, then price reverses.
+    const trap = clean.map((c) => ({ ...c }));
+    const pivotHigh = clean[hi].high;
+    trap[120] = { ...trap[120], high: pivotHigh * 1.04, close: pivotHigh * 1.03 };
+    const trapSig = significance(trap, hi, "high");
+    // A one-bar poke that reverses must not collapse it (old code ×0.25 did).
+    expect(trapSig).toBeGreaterThan(cleanSig * 0.6);
+  });
 });
