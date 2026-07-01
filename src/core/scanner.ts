@@ -180,11 +180,16 @@ function meanVolume(candles: Candle[], end: number, n: number): number {
   return count > 0 ? sum / count : NaN;
 }
 
-/** Compute every metric and gate for a single ticker (score set later). */
+/**
+ * Compute every metric and gate for a single ticker (score set later).
+ * Pass `forceAnchor` to analyze the ticker from a specific anchor instead of the
+ * auto-elected one (used by the Scanner's "try the other anchor" toggle).
+ */
 export function scanTicker(
   input: ScanInput,
   benchmark: Candle[],
   config: ScanConfig = DEFAULT_SCAN_CONFIG,
+  forceAnchor?: ChosenAnchor,
 ): ScanResult {
   const { ticker, candles } = input;
   const n = candles.length;
@@ -202,7 +207,8 @@ export function scanTicker(
   const rs = computeRelativeStrength(candles, benchmark);
 
   // ---- anchor election (significant pivot: high OR low) -------------------
-  const anchor = electBestShelfAnchor(candles, price, config, { earningsTime: input.earningsTime });
+  const anchor =
+    forceAnchor ?? electBestShelfAnchor(candles, price, config, { earningsTime: input.earningsTime });
   const anchoredFromHigh = isHighAnchor(anchor.label);
   const profile = computeAnchoredProfile(candles, anchor.index, {
     rowCount: config.rows,

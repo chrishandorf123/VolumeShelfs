@@ -3,11 +3,15 @@ import {
   anchoredVwapBands,
   anchoredVwapSeries,
   buildTradePlan,
+  defaultAnchorHighIndex,
+  defaultAnchorIndex,
   detectGaps,
   recoContextFromScan,
   recommend,
+  scanTicker,
   scanUniverse,
   smaSeries,
+  type ChosenAnchor,
   type ProfileAnalysis,
   type ScanConfig,
   type ScanInput,
@@ -290,18 +294,33 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
   }
 
   // ---- detail ------------------------------------------------------------
+  /** Anchor override for the currently open detail (the "try the other anchor" toggle). */
+  let detailOverride: ChosenAnchor | null = null;
+
   function select(ticker: string): void {
     selected = ticker;
+    detailOverride = null; // reset to the app's pick when switching tickers
     els.resultsBody.querySelectorAll("tr").forEach((tr) =>
       tr.classList.toggle("sel", (tr as HTMLTableRowElement).dataset.ticker === ticker),
     );
-    const r = results.find((x) => x.ticker === ticker);
+    renderSelectedDetail();
+  }
+
+  /** Render the detail for the selected ticker, honouring any anchor override. */
+  function renderSelectedDetail(): void {
+    const r = results.find((x) => x.ticker === selected);
     if (!r) return;
-    renderDetail(r);
+    const input = lastInputs.find((i) => i.ticker === selected);
+    const dr = detailOverride && input ? scanTicker(input, lastBenchmark, config, detailOverride) : r;
+    renderDetail(dr);
   }
 
   function renderDetail(r: ScanResult): void {
-    els.detailHead.innerHTML = `<h2>${r.ticker} <span class="score-pill">score ${r.score.toFixed(0)}</span>${r.passedAll ? ' <span class="apex-badge">A+</span>' : ""}</h2>
+    const overridden = detailOverride !== null;
+    const tag = overridden
+      ? '<span class="alt-badge">alt anchor</span>'
+      : `<span class="score-pill">score ${r.score.toFixed(0)}</span>${r.passedAll ? ' <span class="apex-badge">A+</span>' : ""}`;
+    els.detailHead.innerHTML = `<h2>${r.ticker} ${tag}</h2>
       <p class="muted">Anchored at ${r.anchor.label}${r.anchoredFromHigh ? " (from high)" : ""} · ${r.shelves.length} shelves · POC ${formatPrice(r.profile.poc.mid)} · ${r.gatesPassed}/7 gates</p>`;
 
     if (!chart) chart = new VolumeShelfsChart($<HTMLCanvasElement>("scanChart"));
@@ -311,6 +330,19 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
 
     els.detailPanels.innerHTML =
       recoPanel(r) + mainPlayPanel(r) + anchorPanel(r) + avwapPanel(r) + gatesPanel(r) + tradePlanPanel(r) + checklistPanel(r);
+
+    // Wire the "try the other anchor" toggle.
+    const candles = lastInputs.find((i) => i.ticker === r.ticker)?.candles ?? [];
+    els.detailPanels.querySelector<HTMLButtonElement>("[data-anchor-other]")?.addEventListener("click", () => {
+      const kind = els.detailPanels.querySelector<HTMLButtonElement>("[data-anchor-other]")!.dataset.anchorOther;
+      const index = kind === "high" ? defaultAnchorHighIndex(candles, 5, 20) : defaultAnchorIndex(candles, 5, 20);
+      detailOverride = { index, label: kind === "high" ? "swing-high" : "swing-low" };
+      renderSelectedDetail();
+    });
+    els.detailPanels.querySelector<HTMLButtonElement>("[data-anchor-reset]")?.addEventListener("click", () => {
+      detailOverride = null;
+      renderSelectedDetail();
+    });
   }
 
   function anchorPanel(r: ScanResult): string {
@@ -322,7 +354,14 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     const why = r.anchoredFromHigh
       ? `Anchored from the ${formatPrice(price)} swing high (${date}) — price fell off that high, so the heavy volume overhead is break-even supply it has to clear. The shelf at price is where it's trying to stabilize.`
       : `Anchored from the ${formatPrice(price)} swing low (${date}) — price built its base off that low, so the shelf at price is the break-even demand (support) underneath, and the volume above is the target.`;
-    return `<div class="panel"><h2 data-glossary="anchor" title="What is an anchor? Click to learn">Why this anchor</h2><p class="coach-why">${escapeHtml(why)}</p></div>`;
+    const otherKind = r.anchoredFromHigh ? "low" : "high";
+    const toggle =
+      detailOverride !== null
+        ? `<button class="coach-btn" data-anchor-reset="1">↺ Back to the app's pick</button>`
+        : `<button class="coach-btn ${otherKind}" data-anchor-other="${otherKind}"><span class="cb-flag">⚑</span> Try the swing ${otherKind} anchor</button>`;
+    return `<div class="panel"><h2 data-glossary="anchor" title="What is an anchor? Click to learn">Why this anchor</h2>
+      <p class="coach-why">${escapeHtml(why)}</p>
+      <div class="coach-btns">${toggle}</div></div>`;
   }
 
   function recoPanel(r: ScanResult): string {

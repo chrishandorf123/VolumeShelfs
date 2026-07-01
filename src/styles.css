@@ -962,6 +962,15 @@ td.tk {
   border-radius: 4px;
 }
 
+.alt-badge {
+  background: rgba(245, 200, 66, 0.18);
+  color: var(--gap);
+  font-size: 10px;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
 /* ---- detail pane ---- */
 .detail-pane {
   flex: 1 1 45%;
