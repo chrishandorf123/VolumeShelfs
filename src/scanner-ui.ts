@@ -310,7 +310,19 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     chart.setVisibleCount(activeScanTf());
 
     els.detailPanels.innerHTML =
-      recoPanel(r) + mainPlayPanel(r) + avwapPanel(r) + gatesPanel(r) + tradePlanPanel(r) + checklistPanel(r);
+      recoPanel(r) + mainPlayPanel(r) + anchorPanel(r) + avwapPanel(r) + gatesPanel(r) + tradePlanPanel(r) + checklistPanel(r);
+  }
+
+  function anchorPanel(r: ScanResult): string {
+    const candles = lastInputs.find((i) => i.ticker === r.ticker)?.candles ?? [];
+    const bar = candles[r.anchor.index];
+    if (!bar) return "";
+    const price = r.anchoredFromHigh ? bar.high : bar.low;
+    const date = new Date(bar.time * 1000).toISOString().slice(0, 10);
+    const why = r.anchoredFromHigh
+      ? `Anchored from the ${formatPrice(price)} swing high (${date}) — price fell off that high, so the heavy volume overhead is break-even supply it has to clear. The shelf at price is where it's trying to stabilize.`
+      : `Anchored from the ${formatPrice(price)} swing low (${date}) — price built its base off that low, so the shelf at price is the break-even demand (support) underneath, and the volume above is the target.`;
+    return `<div class="panel"><h2 data-glossary="anchor" title="What is an anchor? Click to learn">Why this anchor</h2><p class="coach-why">${escapeHtml(why)}</p></div>`;
   }
 
   function recoPanel(r: ScanResult): string {
