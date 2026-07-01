@@ -11,8 +11,12 @@ import {
   computeAnchoredProfile,
   defaultAnchorIndex,
   detectSwings,
+  DEFAULT_BACKTEST_CONFIG,
+  buildTables,
+  decide,
   recommend,
   recoContextFromScan,
+  runBacktest,
   scanTicker,
   smaSeries,
   type AnalysisOptions,
@@ -29,6 +33,7 @@ import { initGuide } from "./guide";
 import { recoPanelHtml } from "./reco-view";
 import { confirmationPanelHtml, confluencePanelHtml, thesisPanelHtml } from "./thesis-view";
 import { tradePlanPanelHtml, wirePositionSizer } from "./trade-view";
+import { modelPanelHtml } from "./model-view";
 
 // ---- DOM helpers -----------------------------------------------------------
 const $ = <T extends HTMLElement>(id: string): T => {
@@ -63,6 +68,7 @@ const els = {
   tfBar: $("tfBarExplore"),
   exploreReco: $("exploreReco"),
   anchorCoach: $("anchorCoach"),
+  modelPanel: $("modelPanel"),
 };
 
 // ---- persisted settings ----------------------------------------------------
@@ -497,9 +503,32 @@ function buildExploreOverlays(c: Candle[], anchorIndex: number, r: ScanResult): 
   return { series, levels };
 }
 
-/** Run after a new series loads: apply the chosen timeframe (verdict already rendered by recompute). */
+/** Run after a new series loads: apply the timeframe and run the backtest model. */
 function afterLoad(): void {
   chart.setVisibleCount(activeTfBars());
+  updateModel();
+}
+
+/**
+ * Run the point-in-time reversion backtest on the loaded symbol's own history
+ * and render the deterministic TAKE / WATCH / STAND-ASIDE call + probability
+ * table. Independent of the chart anchor (the model elects its own operative
+ * anchor per bar), so it only recomputes on a new load, not on anchor tweaks.
+ */
+function updateModel(): void {
+  const c = state.candles;
+  if (c.length < 260) {
+    els.modelPanel.innerHTML = `<div class="panel model-panel"><div class="model-banner aside"><span class="mb-icon">⊘</span><span class="mb-label">MODEL</span></div><p class="model-why">Need ~260+ daily bars of history to backtest this symbol. Load more history (or a daily interval).</p></div>`;
+    return;
+  }
+  try {
+    const result = runBacktest(c, DEFAULT_BACKTEST_CONFIG);
+    const tables = buildTables(result.trades, c, DEFAULT_BACKTEST_CONFIG);
+    const rec = result.live ? decide(result.live, tables) : null;
+    els.modelPanel.innerHTML = rec ? modelPanelHtml(rec, tables, result) : "";
+  } catch {
+    els.modelPanel.innerHTML = "";
+  }
 }
 
 // Debounce the full recompute (it runs a whole scan) so dragging a slider on a

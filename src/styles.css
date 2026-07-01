@@ -1181,6 +1181,111 @@ td.tk {
   color: var(--text);
 }
 
+/* ---- backtest decision model ---- */
+.model-panel {
+  border-width: 2px;
+}
+.model-banner {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+}
+.model-banner .mb-icon {
+  font-size: 15px;
+}
+.model-banner .mb-label {
+  font-size: 15px;
+}
+.model-banner .mb-sub {
+  margin-left: auto;
+  font-size: 10.5px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+.model-banner.take {
+  background: var(--up);
+  color: #06241f;
+}
+.model-banner.watch {
+  background: var(--gap);
+  color: #2a2205;
+}
+.model-banner.aside {
+  background: rgba(120, 130, 150, 0.18);
+  color: var(--muted);
+}
+.model-card {
+  margin-top: 8px;
+}
+.model-hist,
+.model-why {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text);
+}
+.model-size {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+}
+.model-n.thin {
+  color: var(--down);
+}
+.model-disclaimer {
+  margin: 8px 0 0;
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--muted);
+  opacity: 0.8;
+}
+.model-table {
+  margin-top: 8px;
+}
+.model-table > summary {
+  cursor: pointer;
+  font-size: 11.5px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.model-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 6px;
+  font-size: 11px;
+}
+.model-tbl td {
+  padding: 3px 4px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.model-tbl small {
+  color: var(--muted);
+  font-size: 9.5px;
+}
+.model-tbl .model-head td {
+  color: var(--muted);
+  text-transform: uppercase;
+  font-size: 9px;
+  letter-spacing: 0.3px;
+}
+.model-tbl tr.thin {
+  opacity: 0.5;
+}
+.model-tbl tr.edge b {
+  color: var(--up);
+}
+.model-hint,
+.model-meta {
+  font-size: 10px;
+  line-height: 1.4;
+  margin-top: 6px;
+}
+
 /* ---- confluence scorecard ---- */
 .cf-head {
   display: flex;
