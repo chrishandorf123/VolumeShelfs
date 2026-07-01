@@ -11,6 +11,9 @@ const base: RecoContext = {
   avwapReclaim: false,
   avwapValue: 19,
   ma200: 22,
+  ma50: 19,
+  ma200Rising: true,
+  near50ma: true,
   hasShelfAtPrice: true,
   idealScore: 0.7,
   gapActive: false,
@@ -53,9 +56,11 @@ describe("recommend", () => {
   });
 
   it("says WAIT FOR RECLAIM when the shelf is there but price is below its AVWAP", () => {
-    const r = recommend({ ...base, avwapBullish: false, avwapReclaim: false }, plan);
+    // Price 20 genuinely below the AVWAP (21), matching the verdict's meaning.
+    const r = recommend({ ...base, avwapBullish: false, avwapReclaim: false, avwapValue: 21 }, plan);
     expect(r.verdict).toBe("wait");
     expect(r.headline).toContain("close above");
+    expect(r.headline).toContain("21"); // the AVWAP, which is overhead
   });
 
   it("says ON WATCH for a good shelf in a downtrend (falling knife)", () => {
@@ -74,6 +79,51 @@ describe("recommend", () => {
     expect(r.headline).not.toContain("9.37"); // don't cite a below-price AVWAP
     expect(r.headline).toContain("13"); // cite the 200-day, which is above price
     expect(r.reasoning.join(" ")).not.toMatch(/above its AVWAP \(\$9\.37\)/);
+  });
+
+  it("explains a still-falling 200-day when price is already ABOVE the 200-day", () => {
+    // The real ASST case: price 10.91, 200MA 7.03 (below price) but sloping down.
+    const r = recommend(
+      {
+        ...base,
+        trendOk: false,
+        price: 10.91,
+        ma200: 7.03,
+        ma200Rising: false,
+        near50ma: true,
+        avwapValue: 6, // below price, so AVWAP is not the blocker
+      },
+      plan,
+    );
+    expect(r.verdict).toBe("watch");
+    const text = `${r.headline} ${r.reasoning.join(" ")}`;
+    // Must NOT claim it's below the 200-day (it isn't) …
+    expect(text).not.toMatch(/below its 200-day/);
+    // … nor tell you to reclaim/climb back above 7.03 (price is already above it).
+    expect(text).not.toMatch(/(reclaim|climb|close back above|back above the 200-day line)[^.]*7\.03/i);
+    // Must name the real reason: the 200-day is still pointing down.
+    expect(text.toLowerCase()).toMatch(/sloping down|flatten/);
+  });
+
+  it("cites the 50-day as the reclaim level when above a rising 200-day but below the 50-day", () => {
+    const r = recommend(
+      {
+        ...base,
+        trendOk: false,
+        price: 10.91,
+        ma200: 7.03,
+        ma200Rising: true,
+        near50ma: false,
+        ma50: 12.5, // above price — the actual overhead line
+        avwapValue: 6,
+      },
+      plan,
+    );
+    expect(r.verdict).toBe("watch");
+    const text = `${r.headline} ${r.reasoning.join(" ")}`;
+    expect(text).toContain("12.50"); // the 50-day
+    expect(text).not.toContain("7.03"); // never the below-price 200-day
+    expect(text).toMatch(/50-day/);
   });
 
   it("says AVOID when illiquid", () => {

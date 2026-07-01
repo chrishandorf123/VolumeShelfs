@@ -24,6 +24,12 @@ export interface RecoContext {
   avwapValue: number;
   /** The 200-day moving average — the overhead level to reclaim in a downtrend. */
   ma200: number;
+  /** The 50-day moving average (the intermediate-trend line). */
+  ma50: number;
+  /** The 200-day is rising or flat (i.e. the long trend has turned up, not down). */
+  ma200Rising: boolean;
+  /** Price is at/above the 50-day (within the near-50 tolerance). */
+  near50ma: boolean;
   /** A fat volume shelf sits at price (support). */
   hasShelfAtPrice: boolean;
   idealScore: number;
@@ -69,17 +75,33 @@ export function recommend(ctx: RecoContext, plan: TradePlan | null): Recommendat
     verdict = "avoid";
     reasoning.push("Too thin or too cheap to trade cleanly — you'd get bad fills and the levels aren't reliable.");
   } else if (!ctx.trendOk) {
-    // Below the 200-day average — the bigger trend is down.
+    // The longer trend hasn't turned up. Explain the ACTUAL reason and only cite
+    // levels that are genuinely overhead — never tell the user to "reclaim" a
+    // line that price already sits above.
     if (structure) {
       verdict = "watch";
-      const ma = Number.isFinite(ctx.ma200) ? ` (${money(ctx.ma200)})` : "";
-      reasoning.push(`It's below its 200-day average${ma}, so the bigger trend is still down — don't try to catch it here.`);
-      reasoning.push("But there's a real volume shelf at price, so it's worth watching.");
-      // Only cite the AVWAP as a "reclaim" level when price is actually below it.
-      if (Number.isFinite(ctx.avwapValue) && ctx.price < ctx.avwapValue) {
-        reasoning.push(`Only act once it closes back above its AVWAP (${money(ctx.avwapValue)}) and reclaims the 200-day line${ma}.`);
+      const belowMa200 = Number.isFinite(ctx.ma200) && ctx.price < ctx.ma200;
+      const aboveMa200 = Number.isFinite(ctx.ma200) && ctx.price >= ctx.ma200;
+      const belowMa50 = !ctx.near50ma && Number.isFinite(ctx.ma50) && ctx.price < ctx.ma50;
+
+      if (belowMa200) {
+        reasoning.push(`It's below its 200-day average (${money(ctx.ma200)}), so the bigger trend is still down — don't try to catch it here.`);
+      } else if (aboveMa200 && !ctx.ma200Rising) {
+        reasoning.push(`It's back above its 200-day (${money(ctx.ma200)}), but the 200-day is still sloping down — the long-term trend hasn't turned up yet, so don't chase it here.`);
+      } else if (belowMa50) {
+        reasoning.push(`It's above its 200-day but below its 50-day (${money(ctx.ma50)}) — the intermediate trend has rolled over, so don't try to catch it here.`);
       } else {
-        reasoning.push(`Only act once it climbs back above the 200-day line${ma} and the trend turns up.`);
+        reasoning.push("The larger trend hasn't confirmed an uptrend yet — don't chase it here.");
+      }
+      reasoning.push("But there's a real volume shelf at price, so it's worth watching.");
+
+      // The trigger: the nearest overhead line that actually has to be reclaimed.
+      if (belowMa200) {
+        reasoning.push(`Only act once it reclaims the 200-day line (${money(ctx.ma200)}) and the trend turns up.`);
+      } else if (belowMa50) {
+        reasoning.push(`Only act once it reclaims its 50-day (${money(ctx.ma50)})${ctx.ma200Rising ? "" : " and the 200-day starts to turn up"}.`);
+      } else {
+        reasoning.push("Only act once the 200-day flattens and turns up — that's when the bigger trend confirms.");
       }
     } else {
       verdict = "avoid";
@@ -135,16 +157,28 @@ function buildHeadline(verdict: Verdict, ctx: RecoContext, plan: TradePlan | nul
     return `Buy near ${money(plan.entry)}, stop ${money(plan.stop)}${risk}, first target ${money(plan.t1)}${r1}.`;
   }
   if (verdict === "wait") {
-    const trigger = plan ? money(plan.entry) : money(ctx.avwapValue);
-    const stop = plan ? `, then stop ${money(plan.stop)}` : "";
-    return `No trade yet. Buy only on a close above ${trigger}${stop}.`;
+    // The blocker for a WAIT is the AVWAP. Cite it only when it's overhead;
+    // otherwise the trigger is the AVWAP turning up, not a specific price.
+    if (Number.isFinite(ctx.avwapValue) && ctx.price < ctx.avwapValue) {
+      const stop = plan ? `, then stop ${money(plan.stop)}` : "";
+      return `No trade yet. Buy only on a close above its AVWAP (${money(ctx.avwapValue)})${stop}.`;
+    }
+    return "No trade yet. Wait for price to hold above a rising AVWAP before buying.";
   }
   if (verdict === "watch") {
+    const structure = ctx.hasShelfAtPrice || ctx.gapActive || ctx.idealScore >= 0.35;
+    if (!ctx.trendOk) {
+      // Cite the nearest line price actually has to reclaim (never one below it).
+      if (Number.isFinite(ctx.ma200) && ctx.price < ctx.ma200)
+        return `No trade yet — wait for a close back above the 200-day average (${money(ctx.ma200)}).`;
+      if (!ctx.near50ma && Number.isFinite(ctx.ma50) && ctx.price < ctx.ma50)
+        return `No trade yet — wait for a reclaim of the 50-day (${money(ctx.ma50)}).`;
+      return "No trade yet — wait for the 200-day to flatten and turn up.";
+    }
+    if (!structure) return "No trade yet — wait for a pullback into a volume shelf.";
     if (Number.isFinite(ctx.avwapValue) && ctx.price < ctx.avwapValue)
       return `No trade yet — wait for a close above its AVWAP (${money(ctx.avwapValue)}).`;
-    if (Number.isFinite(ctx.ma200) && ctx.price < ctx.ma200)
-      return `No trade yet — wait for a close back above the 200-day average (${money(ctx.ma200)}).`;
-    return "No trade yet — add to a watchlist and wait for the trend to turn up.";
+    return "No trade yet — wait for a cleaner entry back at the shelf.";
   }
   return "Skip this one — it isn't a clean setup.";
 }
@@ -173,6 +207,9 @@ export function recoContextFromScan(result: ScanResult): RecoContext {
     avwapReclaim: result.avwap.reclaim,
     avwapValue: result.avwap.keyState.value,
     ma200: result.ma200,
+    ma50: result.ma50,
+    ma200Rising: result.ma200Slope === "rising" || result.ma200Slope === "flat",
+    near50ma: result.near50ma,
     hasShelfAtPrice: result.gates.shelf.pass || result.idealScore >= 0.4,
     idealScore: result.idealScore,
     gapActive: result.gates.gap.pass,
