@@ -275,8 +275,10 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     els.table.hidden = rows.length === 0;
     els.resultsBody.innerHTML = rows
       .map((r, i) => {
+        // No data-glossary in the row itself: a click on any cell must select
+        // the ticker (the glossary lives on the detail panels + gate breakdown).
         const gates = GATE_ORDER.map(
-          (g) => `<span class="gate ${r.gates[g].pass ? "on" : "off"}" data-glossary="${GATE_GLOSSARY[g]}" title="${GATE_SHORT[g]}: ${escapeHtml(r.gates[g].detail)} — click to learn">${GATE_SHORT[g]}</span>`,
+          (g) => `<span class="gate ${r.gates[g].pass ? "on" : "off"}" title="${GATE_SHORT[g]}: ${escapeHtml(r.gates[g].detail)}">${GATE_SHORT[g]}</span>`,
         ).join("");
         const reco = recommend(recoContextFromScan(r), buildTradePlan(r));
         const shelf = r.supportShelf
@@ -291,7 +293,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
               : "<span class='muted'>—</span>";
         return `<tr data-ticker="${r.ticker}" class="${r.ticker === selected ? "sel" : ""}">
           <td class="muted">${i + 1}</td>
-          <td class="tk">${r.ticker}${r.passedAll ? ' <span class="apex-badge">A+</span>' : ""}<div class="reco-chip reco-${reco.verdict}" data-glossary="verdict" title="${escapeHtml(reco.headline)}">${reco.label}</div></td>
+          <td class="tk">${r.ticker}${r.passedAll ? ' <span class="apex-badge">A+</span>' : ""}<div class="reco-chip reco-${reco.verdict}" title="${escapeHtml(reco.headline)}">${reco.label}</div></td>
           <td><div class="scorebar"><span style="width:${r.score.toFixed(0)}%"></span></div><b>${r.score.toFixed(0)}</b></td>
           <td><span class="cf-pill grade-${r.confluence.grade.replace("+", "plus")}" title="${r.confluence.passed}/10 confirmations${r.confluence.reversionIntoStrength ? " · reversion-into-strength" : r.confluence.chasing ? " · extended (chasing)" : ""}">${r.confluence.grade}<small>${r.confluence.passed}</small></span></td>
           <td class="gates-cell">${gates}</td>
@@ -578,8 +580,8 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
         <div class="stat"><span class="k">Risk</span><span class="v">${(plan.riskPct * 100).toFixed(1)}%</span></div>
         <div class="stat"><span class="k">R to T1 / T2</span><span class="v">${plan.rMultipleT1.toFixed(1)}R / ${plan.rMultipleT2.toFixed(1)}R</span></div>
       </div>
-      <div class="possize" data-glossary="r-multiple" title="Risk-based sizing. Click to learn about R">
-        <span class="k">Size <span class="muted">(risk-based)</span></span>
+      <div class="possize">
+        <span class="k" data-glossary="r-multiple" title="Risk-based sizing. Click to learn about R">Size <span class="muted">(risk-based)</span></span>
         <label>Acct $ <input id="psAcct" type="number" min="0" step="100" value="${acct}" /></label>
         <label>Risk % <input id="psRisk" type="number" min="0" step="0.25" value="${riskPref}" /></label>
         <span class="ps-out">→ <b id="psShares">${shares}</b> sh · $<span id="psDollar">${(shares * perShare).toFixed(0)}</span> risk</span>
