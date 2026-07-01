@@ -1283,6 +1283,36 @@ td.tk {
   white-space: nowrap;
 }
 
+/* confluence grade pill in the scanner results table */
+.cf-pill {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  font-weight: 800;
+  font-size: 12px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.cf-pill small {
+  font-size: 9.5px;
+  font-weight: 600;
+  opacity: 0.8;
+}
+.cf-pill.grade-Aplus {
+  background: var(--up);
+  color: #06241f;
+  border-color: var(--up);
+}
+.cf-pill.grade-A {
+  color: var(--up);
+  border-color: var(--up);
+}
+.cf-pill.grade-B {
+  color: var(--text);
+}
+
 /* ---- secondary confirmation ---- */
 .mrs-badge {
   display: inline-block;

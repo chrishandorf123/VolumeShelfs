@@ -39,6 +39,7 @@ export interface ScanWeights {
   avwap: number;
   pinch: number;
   contraction: number;
+  confluence: number;
 }
 
 export interface ScanConfig {
@@ -78,7 +79,7 @@ export const DEFAULT_SCAN_CONFIG: ScanConfig = {
   atrLookback: 10,
   // The gap/shelf volume-profile play is the main signal, so it carries the
   // most weight; AVWAP, RS, pinch and contraction confirm it.
-  weights: { ideal: 1.5, gap: 1.5, rs: 1, avwap: 1, pinch: 0.75, contraction: 0.75 },
+  weights: { ideal: 1.5, gap: 1.5, rs: 1, avwap: 1, pinch: 0.75, contraction: 0.75, confluence: 1.5 },
 };
 
 const FAT_REF = 3.0;
@@ -116,6 +117,8 @@ export interface ScanFactors {
   avwap: number;
   pinchSpread: number; // lower is better; NaN when no pinch
   contraction: number; // atrNow / atrPrior; lower is better
+  /** Confluence confirmations passed (0..10); higher is better. */
+  confluence: number;
 }
 
 export type GateKey = "liquidity" | "trend" | "rs" | "shelf" | "gap" | "avwap" | "contraction";
@@ -430,6 +433,7 @@ export function scanTicker(
     pinchSpread: pinch ? pinch.spread : NaN,
     contraction:
       Number.isFinite(atrNow) && Number.isFinite(atrPrior) && atrPrior > 0 ? atrNow / atrPrior : NaN,
+    confluence: confluence.passed,
   };
 
   return {
@@ -505,9 +509,10 @@ export function scanUniverse(
   const avwapN = normalize(results.map((r) => r.factors.avwap), false);
   const pinchN = normalize(results.map((r) => r.factors.pinchSpread), true);
   const contractN = normalize(results.map((r) => r.factors.contraction), true);
+  const confluenceN = normalize(results.map((r) => r.factors.confluence), false);
 
   const w = config.weights;
-  const wSum = w.ideal + w.gap + w.rs + w.avwap + w.pinch + w.contraction || 1;
+  const wSum = w.ideal + w.gap + w.rs + w.avwap + w.pinch + w.contraction + w.confluence || 1;
 
   results.forEach((r, i) => {
     const raw =
@@ -516,7 +521,8 @@ export function scanUniverse(
       rsN[i] * w.rs +
       avwapN[i] * w.avwap +
       pinchN[i] * w.pinch +
-      contractN[i] * w.contraction;
+      contractN[i] * w.contraction +
+      confluenceN[i] * w.confluence;
     r.score = (raw / wSum) * 100;
   });
 

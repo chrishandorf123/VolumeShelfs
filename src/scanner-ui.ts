@@ -73,6 +73,7 @@ const WEIGHTS: Array<{ key: keyof ScanConfig["weights"]; label: string }> = [
   { key: "avwap", label: "AVWAP" },
   { key: "pinch", label: "AVWAP pinch" },
   { key: "contraction", label: "Contraction" },
+  { key: "confluence", label: "Confluence" },
 ];
 
 export interface ScannerUi {
@@ -290,6 +291,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
           <td class="muted">${i + 1}</td>
           <td class="tk">${r.ticker}${r.passedAll ? ' <span class="apex-badge">A+</span>' : ""}<div class="reco-chip reco-${reco.verdict}" data-glossary="verdict" title="${escapeHtml(reco.headline)}">${reco.label}</div></td>
           <td><div class="scorebar"><span style="width:${r.score.toFixed(0)}%"></span></div><b>${r.score.toFixed(0)}</b></td>
+          <td><span class="cf-pill grade-${r.confluence.grade.replace("+", "plus")}" title="${r.confluence.passed}/10 confirmations${r.confluence.reversionIntoStrength ? " · reversion-into-strength" : r.confluence.chasing ? " · extended (chasing)" : ""}">${r.confluence.grade}<small>${r.confluence.passed}</small></span></td>
           <td class="gates-cell">${gates}</td>
           <td>${formatPrice(r.price)}</td>
           <td class="${r.rs.excess3mo >= 0 ? "pos" : "neg"}">${fmtPct(r.rs.excess3mo)}</td>
