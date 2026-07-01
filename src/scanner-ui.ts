@@ -452,8 +452,12 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     // Shannon AVWAP std-dev bands + the key (break-even) AVWAP at the anchor,
     // plus only the AVWAPs that form a pinch (confluence) to avoid clutter.
     const bands = anchoredVwapBands(candles, r.anchor.index, 1);
-    series.push({ label: "+1σ", values: bands.upper, color: "rgba(91,141,239,0.25)", dashed: true });
-    series.push({ label: "−1σ", values: bands.lower, color: "rgba(91,141,239,0.25)", dashed: true });
+    const bands2 = anchoredVwapBands(candles, r.anchor.index, 2);
+    // ±2σ = extended (chase / deep-reversion) zone; ±1σ = the normal range.
+    series.push({ label: "+2σ", values: bands2.upper, color: "rgba(239,83,80,0.18)", dashed: true });
+    series.push({ label: "−2σ", values: bands2.lower, color: "rgba(38,166,154,0.18)", dashed: true });
+    series.push({ label: "+1σ", values: bands.upper, color: "rgba(91,141,239,0.22)", dashed: true });
+    series.push({ label: "−1σ", values: bands.lower, color: "rgba(91,141,239,0.22)", dashed: true });
     series.push({ label: "AVWAP", values: bands.vwap, color: "#5b8def" });
     const pinchLabels = new Set(r.pinch?.members.map((m) => m.label) ?? []);
     r.avwapAnchors

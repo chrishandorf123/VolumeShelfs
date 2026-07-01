@@ -462,9 +462,14 @@ function renderExploreReco(r: ScanResult | null): void {
 function buildExploreOverlays(c: Candle[], anchorIndex: number, r: ScanResult): ChartOverlays {
   const closes = c.map((x) => x.close);
   const bands = anchoredVwapBands(c, anchorIndex, 1);
+  const bands2 = anchoredVwapBands(c, anchorIndex, 2);
   const series = [
-    { label: "+1σ", values: bands.upper, color: "rgba(91,141,239,0.25)", dashed: true },
-    { label: "−1σ", values: bands.lower, color: "rgba(91,141,239,0.25)", dashed: true },
+    // ±2σ = "extended": price up here is a take-profit / don't-chase zone; price
+    // down here is the deep reversion-into-support zone.
+    { label: "+2σ", values: bands2.upper, color: "rgba(239,83,80,0.18)", dashed: true },
+    { label: "−2σ", values: bands2.lower, color: "rgba(38,166,154,0.18)", dashed: true },
+    { label: "+1σ", values: bands.upper, color: "rgba(91,141,239,0.22)", dashed: true },
+    { label: "−1σ", values: bands.lower, color: "rgba(91,141,239,0.22)", dashed: true },
     { label: "AVWAP", values: bands.vwap, color: "#5b8def" },
     { label: "50MA", values: smaSeries(closes, 50), color: "rgba(139,149,167,0.85)" },
     { label: "200MA", values: smaSeries(closes, 200), color: "rgba(239,83,80,0.65)" },
