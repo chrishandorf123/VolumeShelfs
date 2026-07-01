@@ -35,6 +35,10 @@ export interface RecoContext {
   idealScore: number;
   /** An active volume-gap play (price at the shelf, air pocket above). */
   gapActive: boolean;
+  /** Confluence confirmations passed (0..10); undefined when unknown. */
+  confluencePassed?: number;
+  /** Price is 2+ SD above its anchored mean — extended, so don't chase it. */
+  chasing?: boolean;
 }
 
 export interface Recommendation {
@@ -117,7 +121,13 @@ export function recommend(ctx: RecoContext, plan: TradePlan | null): Recommendat
     const bestR = plan ? Math.max(safe(plan.rMultipleT1), safe(plan.rMultipleT2)) : Infinity;
     const riskOk = !plan || !Number.isFinite(plan.riskPct) || plan.riskPct <= 0.12;
     const rrOk = !plan || bestR >= 1.2;
-    if (!riskOk || !rrOk) {
+    if (ctx.chasing) {
+      // Jake's rule: don't initiate into the upper band — that's a take-profit
+      // zone. A bullish backdrop doesn't justify chasing an extended price.
+      verdict = "watch";
+      reasoning.push("The backdrop is bullish, but price is stretched well above its anchored mean (VWAP) — that's where you take profit, not where you start a position.");
+      reasoning.push("Wait for a pullback toward the mean so your risk is small and your entry sits on support.");
+    } else if (!riskOk || !rrOk) {
       verdict = "watch";
       reasoning.push("The backdrop is good (uptrend, shelf, AVWAP support), but the trade itself isn't clean right now.");
       if (!riskOk) reasoning.push(`The stop would be far away (${(plan!.riskPct * 100).toFixed(0)}% risk) — wait for price to come back to the shelf so your risk is smaller.`);
@@ -167,6 +177,8 @@ function buildHeadline(verdict: Verdict, ctx: RecoContext, plan: TradePlan | nul
   }
   if (verdict === "watch") {
     const structure = ctx.hasShelfAtPrice || ctx.gapActive || ctx.idealScore >= 0.35;
+    if (ctx.chasing && ctx.trendOk)
+      return "No trade yet — price is extended above its anchored mean; wait for a pullback toward it.";
     if (!ctx.trendOk) {
       // Cite the nearest line price actually has to reclaim (never one below it).
       if (Number.isFinite(ctx.ma200) && ctx.price < ctx.ma200)
@@ -191,6 +203,13 @@ function confidenceOf(ctx: RecoContext): Recommendation["confidence"] {
     (ctx.hasShelfAtPrice || ctx.gapActive ? 1 : 0) +
     (ctx.idealScore >= 0.5 ? 1 : 0);
   if (!ctx.liquidityOk) return "low";
+  // Fold in the confluence scorecard when we have it: broad multi-tier
+  // confirmation lifts confidence; a nearly-empty scorecard caps it.
+  if (typeof ctx.confluencePassed === "number") {
+    if (greens >= 4 && ctx.confluencePassed >= 7) return "high";
+    if (ctx.confluencePassed <= 2) return "low";
+    if (greens >= 4 && ctx.confluencePassed < 5) return "medium";
+  }
   if (greens >= 4) return "high";
   if (greens >= 2) return "medium";
   return "low";
@@ -213,5 +232,7 @@ export function recoContextFromScan(result: ScanResult): RecoContext {
     hasShelfAtPrice: result.gates.shelf.pass || result.idealScore >= 0.4,
     idealScore: result.idealScore,
     gapActive: result.gates.gap.pass,
+    confluencePassed: result.confluence.passed,
+    chasing: result.confluence.chasing,
   };
 }

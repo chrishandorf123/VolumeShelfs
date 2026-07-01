@@ -126,6 +126,18 @@ describe("recommend", () => {
     expect(text).toMatch(/50-day/);
   });
 
+  it("downgrades a bullish setup to WATCH when price is extended (don't chase)", () => {
+    const r = recommend({ ...base, chasing: true }, plan);
+    expect(r.verdict).toBe("watch");
+    expect(r.reasoning.join(" ").toLowerCase()).toContain("anchored mean");
+    expect(r.headline.toLowerCase()).toContain("extended");
+  });
+
+  it("keeps high confidence only with broad confluence, caps it when the scorecard is empty", () => {
+    expect(recommend({ ...base, confluencePassed: 8 }, plan).confidence).toBe("high");
+    expect(recommend({ ...base, confluencePassed: 1 }, plan).confidence).toBe("low");
+  });
+
   it("says AVOID when illiquid", () => {
     const r = recommend({ ...base, liquidityOk: false }, plan);
     expect(r.verdict).toBe("avoid");
