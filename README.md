@@ -13,6 +13,14 @@ trader looks for:
   can move quickly because there is little friction.
 - **POC** (point of control) and the **value area**.
 
+The **main play** is the **volume-gap traverse**: a low-volume gap (LVN "air
+pocket") bracketed by two shelves (HVN). Price holds the lower shelf, then
+travels fast through the gap to the far shelf. On top of the volume profile sits
+an **Anchored VWAP** layer (Brian Shannon, *Maximum Trading Gains with the
+Anchored VWAP*): the AVWAP is the break-even cost basis since a significant
+anchor, and *price above a rising AVWAP* + an **AVWAP reclaim**, **confluence
+(pinch)** and **std-dev bands** confirm the play.
+
 You anchor the profile from a swing low or swing high (or click any candle), and
 the engine recomputes the shelves, gaps and break-even zones live.
 
@@ -101,10 +109,12 @@ src/
     swings.ts           #   swing-pivot detection for auto-anchoring
     indicators.ts       #   SMA, ATR, anchored VWAP, returns, slope
     avwap.ts            #   AVWAP anchors (52w hi/lo, YTD, earnings) + pinch
+    avwapStrategy.ts    #   Shannon layer: state, reclaim/loss, std-dev bands
+    gapPlay.ts          #   the main play: volume-gap traverse detection
     relativeStrength.ts #   RS vs a benchmark + RS line
-    anchor.ts           #   per-ticker anchor selection
+    anchor.ts           #   significant-pivot anchor election (high or low)
     scanner.ts          #   universe scan: gates, factors, scoring, ranking
-    tradePlan.ts        #   entry / stop / target levels
+    tradePlan.ts        #   entry / stop / target levels (gap-play driven)
   data/                 # pluggable data providers, CSV parser, demo universe
   chart/                # canvas renderer (candles, profile, AVWAP/MA overlays)
   scanner-ui.ts         # scanner tab: table, detail, trade plan, checklist
@@ -150,6 +160,18 @@ by eye.
   scans them. Daily bars are the documented approximation; intraday only sharpens
   true volume-at-price.
 
+### Anchor election (significant pivot, high *or* low)
+
+The scanner doesn't just anchor from the swing low. For each ticker it builds a
+candidate set — {earnings, major swing-low, major swing-high, 52-week high,
+52-week low} — anchors a profile from each, and **elects the one whose fattest
+shelf sits at current price** (the anchor that best "explains" where price
+trades). A leader basing near its highs keeps its major-swing-**low** anchor; a
+name that fell off a pivot **high** into a volume shelf (the ASST reference
+case) flips to the **high** anchor. It falls back to the conservative swing-low
+logic when no candidate has a qualifying shelf at price, and a `significance`
+term (range position, move size, recency, with a reclaim discount) breaks ties.
+
 ### Gates (computed per ticker)
 
 | Gate | Passes when |
@@ -157,33 +179,49 @@ by eye.
 | **Liquidity** | price ≥ min, 20-day avg dollar volume ≥ min |
 | **Trend & MA** | above a flat-to-rising 200-day MA, and above/within X% of the 50-day MA |
 | **Relative strength** | outperforms the benchmark over 1mo **and** 3mo, with the RS line near highs or above its own 50-day MA |
-| **Volume shelf** | a support shelf (HVN run, ≥ k×mean volume) sits at/just below price, within X% of its midpoint, with the POC at/below price |
-| **AVWAP pinch** | ≥ 2 anchored VWAPs (52w high/low, YTD open, earnings) cluster within X%, and price sits inside the pinch |
+| **Volume shelf** | a fat shelf (HVN run, ≥ k×mean volume) sits at price (anchor-aware: at/below for a low anchor, the shelf price pulled into for a high anchor) |
+| **Volume gap** (main play) | an *active* gap play — price at a support shelf with a low-volume air pocket above leading to a target shelf — with R:R ≥ min and air pocket ≥ min |
+| **AVWAP** (Shannon) | price above a *rising* long-side AVWAP, or a fresh AVWAP reclaim (confluence/pinch shown alongside) |
 | **Contraction** | ATR(14) contracting and no high-volume breakdown bar through the shelf in the last 5 bars |
+
+### The main play — volume-gap traverse
+
+A volume gap (LVN) bracketed by two shelves is an air pocket price travels
+through quickly. `gapPlay.ts` pairs each gap with the support shelf below
+(entry) and the target shelf above, and the trade plan rides it: **enter** on a
+reclaim of the support-shelf top, **stop** just below the shelf, **target** the
+far side of the gap. The Shannon AVWAP layer confirms it — you want price above
+a rising AVWAP (or a reclaim) before committing; below the key AVWAP the plan
+says *wait for the reclaim*.
 
 ### Ranking
 
-Each candidate gets a 0–100 score. Five factors — shelf strength, relative
-strength, pinch tightness, proximity to the shelf, and range contraction — are
-min-max normalized across the scanned set and combined with adjustable weights
-(start equal-weighted, then re-weight toward whatever predicts your winners).
-Candidates are ordered by hard-gate count first (so a clean downtrend with a
-tight pinch can't outrank a real leader), then by score. Toggle **A+ only** to
-show names that clear all six gates.
+Each candidate gets a 0–100 score. Six factors — **ideal shelf-at-price**,
+**gap-play quality** (the two volume-profile factors carry the most weight),
+relative strength, AVWAP constructiveness, pinch tightness, and range
+contraction — are min-max normalized across the scanned set and combined with
+adjustable weights. Candidates are ordered by **hard-gate count first**
+(liquidity + trend + RS), so a clean downtrend with a fat decline shelf and a
+tight gap can't outrank a real leader, then by score. Toggle **A+ only** to show
+names that clear all seven gates.
 
 ### Per-candidate detail
 
-Click any row to load its chart with the support shelf, AVWAP lines (pinch
-members solid), 50/200-day MAs, and the trade-plan levels drawn on it, plus:
+Click any row to load its chart with the support shelf, the AVWAP (key
+break-even line) and its ±1σ bands, confluence AVWAPs, 50/200-day MAs, and the
+trade-plan levels, plus:
 
-- the **gate breakdown** (what passed/failed and why),
-- a **trade plan** — reclaim entry, stop below the shelf, T1 (POC/next HVN), T2
-  (VAH and the next LVN air-pocket), risk % and R-multiples,
-- the **manual confirmation checklist** (the eyeball checks the scan can't do).
+- the **main-play panel** (the gap traverse, or the shelf-at-price ideal),
+- the **AVWAP panel** (regime, slope/side, reclaim/loss, pinch),
+- the **gate breakdown**, a gap-play-aware **trade plan**, and the **manual
+  confirmation checklist**.
 
-> The bundled demo universe is synthetic, so gate passes vary — the AVWAP-pinch
-> and relative-strength gates in particular are strict. With live data the same
-> engine runs unchanged.
+> The bundled demo universe is synthetic, so gate passes vary. A pullback-from-a-
+> high like the ASST archetype is correctly recognized as the *ideal shelf/anchor
+> structure* (high anchor, fat shelf, active gap play) yet is **not** forced to
+> A+: it trades below its AVWAPs and fails the trend/RS gates, so the plan flags
+> it as a watch-for-reclaim setup rather than a buy-now leader. With live data
+> the same engine runs unchanged.
 
 ## Tuning the controls
 

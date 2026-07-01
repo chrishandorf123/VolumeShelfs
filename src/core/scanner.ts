@@ -4,18 +4,38 @@ import { computeAnchoredProfile } from "./volumeProfile";
 import {
   detectHvnShelves,
   nearestShelves,
+  shelfOverlapsValueArea,
   type NearestShelves,
   type ScoredShelf,
 } from "./shelves";
 import { computeRelativeStrength, type RelativeStrength } from "./relativeStrength";
-import { computeAvwapAnchors, detectPinch, type AvwapAnchor, type AvwapPinch } from "./avwap";
-import { chooseScanAnchor, type ChosenAnchor } from "./anchor";
+import {
+  computeAvwapAnchors,
+  detectPinch,
+  index52wLow,
+  indexAtTime,
+  indexYtdOpen,
+  type AvwapAnchor,
+  type AvwapPinch,
+} from "./avwap";
+import { avwapCross, avwapState, type AvwapEvent, type AvwapState } from "./avwapStrategy";
+import { defaultAnchorIndex } from "./swings";
+import {
+  chooseScanAnchor,
+  electBestShelfAnchor,
+  isHighAnchor,
+  significance,
+  type ChosenAnchor,
+} from "./anchor";
+import { detectGapPlays, selectPrimaryGapPlay, type GapPlay } from "./gapPlay";
 
+/** Ranking weights. The volume-profile play (ideal shelf-at-price + gap) leads. */
 export interface ScanWeights {
-  shelf: number;
+  ideal: number;
+  gap: number;
   rs: number;
+  avwap: number;
   pinch: number;
-  proximity: number;
   contraction: number;
 }
 
@@ -27,6 +47,11 @@ export interface ScanConfig {
   shelfMinBins: number;
   proximityPct: number;
   pinchTolerance: number;
+  gapThreshold: number;
+  /** Minimum reward-to-risk for the gap-play gate. */
+  minGapRR: number;
+  /** Minimum air-pocket size (fraction of price) for the gap-play gate. */
+  minGapPct: number;
   rows: number;
   scale: PriceScale;
   valueAreaFraction: number;
@@ -42,12 +67,19 @@ export const DEFAULT_SCAN_CONFIG: ScanConfig = {
   shelfMinBins: 2,
   proximityPct: 0.03,
   pinchTolerance: 0.03,
+  gapThreshold: 0.15,
+  minGapRR: 1.5,
+  minGapPct: 0.03,
   rows: 50,
   scale: "log",
   valueAreaFraction: 0.7,
   atrLookback: 10,
-  weights: { shelf: 1, rs: 1, pinch: 1, proximity: 1, contraction: 1 },
+  // The gap/shelf volume-profile play is the main signal, so it carries the
+  // most weight; AVWAP, RS, pinch and contraction confirm it.
+  weights: { ideal: 1.5, gap: 1.5, rs: 1, avwap: 1, pinch: 0.75, contraction: 0.75 },
 };
+
+const FAT_REF = 3.0;
 
 export interface GateResult {
   pass: boolean;
@@ -62,13 +94,29 @@ export interface ScanInput {
   earningsTime?: number;
 }
 
+export interface AvwapSummary {
+  /** State of the AVWAP anchored at the elected profile anchor (the break-even line). */
+  keyState: AvwapState;
+  /** Price above a rising long-side AVWAP somewhere (Shannon's bullish regime). */
+  bullish: boolean;
+  /** A recent reclaim of a long-side AVWAP. */
+  reclaim: boolean;
+  event: AvwapEvent;
+}
+
 export interface ScanFactors {
-  shelfStrength: number;
+  /** Shelf-at-price ideal-setup quality. */
+  ideal: number;
+  /** Volume-gap play quality (the main play). */
+  gapQuality: number;
   rsExcess: number;
+  /** AVWAP constructiveness (above rising AVWAP / reclaim). */
+  avwap: number;
   pinchSpread: number; // lower is better; NaN when no pinch
-  proximity: number; // lower is better; NaN when no support shelf
   contraction: number; // atrNow / atrPrior; lower is better
 }
+
+export type GateKey = "liquidity" | "trend" | "rs" | "shelf" | "gap" | "avwap" | "contraction";
 
 export interface ScanResult {
   ticker: string;
@@ -81,23 +129,30 @@ export interface ScanResult {
   near50ma: boolean;
   rs: RelativeStrength;
   anchor: ChosenAnchor;
+  anchoredFromHigh: boolean;
   profile: AnchoredVolumeProfile;
   shelves: ScoredShelf[];
   nearest: NearestShelves;
+  /** The decision shelf price is interacting with (inside / below / above). */
   supportShelf: ScoredShelf | null;
   supportMid: number | null;
   proximityPct: number | null;
   pocBelowPrice: boolean;
+  /** 0..1 quality of the shelf-at-price ideal setup. */
+  idealScore: number;
+  /** The primary volume-gap play (the main play), if any. */
+  gapPlay: GapPlay | null;
   avwapAnchors: AvwapAnchor[];
   pinch: AvwapPinch | null;
+  avwap: AvwapSummary;
   atrNow: number;
   atrPrior: number;
   atrContracting: boolean;
   pullbackVolumeDrying: boolean;
   noBreakdownBar: boolean;
-  gates: Record<"liquidity" | "trend" | "rs" | "shelf" | "pinch" | "contraction", GateResult>;
+  gates: Record<GateKey, GateResult>;
   passedAll: boolean;
-  /** Number of gates passed (0..6), used for ranking. */
+  /** Number of gates passed (0..7), used for ranking. */
   gatesPassed: number;
   factors: ScanFactors;
   /** 0..100 ranking score, filled by `scanUniverse`. */
@@ -106,6 +161,11 @@ export interface ScanResult {
 
 function shelfMid(s: ScoredShelf): number {
   return (s.priceLow + s.priceHigh) / 2;
+}
+
+function clamp01(v: number): number {
+  if (!Number.isFinite(v)) return 0;
+  return Math.min(1, Math.max(0, v));
 }
 
 /** Mean volume over `n` bars ending at (and excluding) index `end`. */
@@ -141,7 +201,9 @@ export function scanTicker(
 
   const rs = computeRelativeStrength(candles, benchmark);
 
-  const anchor = chooseScanAnchor(candles, { earningsTime: input.earningsTime });
+  // ---- anchor election (significant pivot: high OR low) -------------------
+  const anchor = electBestShelfAnchor(candles, price, config, { earningsTime: input.earningsTime });
+  const anchoredFromHigh = isHighAnchor(anchor.label);
   const profile = computeAnchoredProfile(candles, anchor.index, {
     rowCount: config.rows,
     scale: config.scale,
@@ -149,14 +211,79 @@ export function scanTicker(
   });
   const shelves = detectHvnShelves(profile, price, config.shelfK, config.shelfMinBins);
   const nearest = nearestShelves(shelves, price);
+  // Support is always the shelf at/below price — inside it, or just beneath it
+  // (the reclaim band, where the election may have flipped to a high anchor
+  // precisely because that shelf is at price). A shelf ABOVE price is overhead
+  // resistance, not support, so it is never the support shelf.
   const supportShelf = nearest.inside ?? nearest.below;
   const supportMid = supportShelf ? shelfMid(supportShelf) : null;
-  const proximityPct = supportMid !== null ? Math.abs(price - supportMid) / price : null;
+  // Proximity is edge-based: 0 when price sits inside the shelf, otherwise the
+  // distance to the nearest edge (so a wide shelf price is inside still counts
+  // as "at the shelf" rather than failing on midpoint distance).
+  const supportInside =
+    supportShelf !== null && price >= supportShelf.priceLow && price <= supportShelf.priceHigh;
+  const proximityPct = supportShelf
+    ? supportInside
+      ? 0
+      : Math.min(Math.abs(price - supportShelf.priceLow), Math.abs(price - supportShelf.priceHigh)) /
+        price
+    : null;
   const pocBelowPrice = profile.poc.mid <= price;
 
+  // ---- ideal shelf-at-price score ----------------------------------------
+  let idealScore = 0;
+  if (supportShelf && proximityPct !== null) {
+    const fatness = clamp01((supportShelf.strength - config.shelfK) / (FAT_REF - config.shelfK));
+    const atPrice = supportInside ? 1 : clamp01(1 - proximityPct / config.proximityPct);
+    const dominance = significance(candles, anchor.index, anchoredFromHigh ? "high" : "low");
+    const massVA =
+      clamp01(supportShelf.fraction / 0.25) *
+      (shelfOverlapsValueArea(supportShelf, profile.valueArea) ? 1 : 0.6);
+    idealScore = fatness * atPrice * dominance * massVA;
+  }
+
+  // ---- the main play: volume-gap traverse --------------------------------
+  const gapPlays = detectGapPlays(profile, price, {
+    shelfThreshold: 0.55,
+    gapThreshold: config.gapThreshold,
+    shelfK: config.shelfK,
+    shelfMinBins: config.shelfMinBins,
+    proximityPct: config.proximityPct,
+  });
+  const gapPlay = selectPrimaryGapPlay(gapPlays, price);
+
+  // ---- AVWAP layer (Brian Shannon) ---------------------------------------
   const avwapAnchors = computeAvwapAnchors(candles, { earningsTime: input.earningsTime });
   const pinch = detectPinch(avwapAnchors, price, config.pinchTolerance);
 
+  const longAnchorIdx = Array.from(
+    new Set(
+      [
+        defaultAnchorIndex(candles, 5, 20),
+        index52wLow(candles),
+        indexYtdOpen(candles),
+        ...(input.earningsTime !== undefined ? [indexAtTime(candles, input.earningsTime)] : []),
+      ].filter((i) => i >= 0 && i <= n - 1 - 5),
+    ),
+  );
+  let avwapBullish = false;
+  let avwapReclaim = false;
+  for (const idx of longAnchorIdx) {
+    const st = avwapState(candles, idx);
+    if (st.regime === "bullish") avwapBullish = true;
+    if (avwapCross(candles, idx, 5).event === "reclaim") avwapReclaim = true;
+  }
+  const keyState = avwapState(candles, anchor.index);
+  const keyCross = avwapCross(candles, anchor.index, 5);
+  const avwap: AvwapSummary = {
+    keyState,
+    bullish: avwapBullish,
+    reclaim: avwapReclaim,
+    event: keyCross.event,
+  };
+  const avwapScore = (avwapBullish ? 0.6 : 0) + (avwapReclaim ? 0.4 : 0);
+
+  // ---- ATR contraction & breakdown ---------------------------------------
   const atr = atrSeries(candles, 14);
   const atrNow = atr[n - 1] ?? NaN;
   const atrPrior = atr[n - 1 - config.atrLookback] ?? NaN;
@@ -182,18 +309,22 @@ export function scanTicker(
   const liquidityPass =
     Number.isFinite(price) && price >= config.minPrice && avgDollarVol >= config.minDollarVol;
   const trendPass = aboveMa200 && ma200Slope !== "falling" && ma200Slope !== "unknown" && near50ma;
-  const rsPass =
-    rs.outperform1mo && rs.outperform3mo && (rs.rsLineNearHigh || rs.rsLineAboveMa);
+  const rsPass = rs.outperform1mo && rs.outperform3mo && (rs.rsLineNearHigh || rs.rsLineAboveMa);
   const shelfPass =
     supportShelf !== null &&
-    pocBelowPrice &&
+    (anchoredFromHigh ? true : pocBelowPrice) &&
     proximityPct !== null &&
     proximityPct <= config.proximityPct &&
     supportShelf.strength >= config.shelfK;
-  const pinchPass = pinch !== null && pinch.spread <= config.pinchTolerance && pinch.priceInside;
+  const gapPass =
+    gapPlay !== null &&
+    gapPlay.active &&
+    gapPlay.rr >= config.minGapRR &&
+    gapPlay.airPocketPct >= config.minGapPct;
+  const avwapPass = avwapBullish || avwapReclaim;
   const contractionPass = atrContracting && noBreakdownBar;
 
-  const gates: ScanResult["gates"] = {
+  const gates: Record<GateKey, GateResult> = {
     liquidity: {
       pass: liquidityPass,
       label: "Liquidity",
@@ -215,15 +346,20 @@ export function scanTicker(
       pass: shelfPass,
       label: "Volume shelf",
       detail: supportShelf
-        ? `support ${supportShelf.priceLow.toFixed(2)}–${supportShelf.priceHigh.toFixed(2)} · ${supportShelf.strength.toFixed(1)}× · ${proximityPct !== null ? (proximityPct * 100).toFixed(1) : "—"}% away`
-        : "no support shelf at price",
+        ? `${supportShelf.priceLow.toFixed(2)}–${supportShelf.priceHigh.toFixed(2)} · ${supportShelf.strength.toFixed(1)}× · ${proximityPct !== null ? (proximityPct * 100).toFixed(1) : "—"}% away${anchoredFromHigh ? " (pullback into shelf)" : ""}`
+        : "no shelf at price",
     },
-    pinch: {
-      pass: pinchPass,
-      label: "AVWAP pinch",
-      detail: pinch
-        ? `${pinch.members.length} AVWAPs · ${(pinch.spread * 100).toFixed(1)}% spread${pinch.priceInside ? " · price inside" : ""}`
-        : "no pinch",
+    gap: {
+      pass: gapPass,
+      label: "Volume gap play",
+      detail: gapPlay
+        ? `air pocket ${(gapPlay.airPocketPct * 100).toFixed(1)}% → ${gapPlay.target.toFixed(2)} · ${gapPlay.rr.toFixed(1)}R${gapPlay.active ? " · active" : " · watch"}`
+        : "no gap above support",
+    },
+    avwap: {
+      pass: avwapPass,
+      label: "AVWAP",
+      detail: `${avwapBullish ? "above rising AVWAP" : "below/!rising AVWAP"}${avwapReclaim ? " · reclaim" : ""}${pinch?.priceInside ? ` · pinch ${(pinch.spread * 100).toFixed(1)}%` : ""}`,
     },
     contraction: {
       pass: contractionPass,
@@ -236,11 +372,13 @@ export function scanTicker(
   const gatesPassed = gateList.filter((g) => g.pass).length;
 
   const factors: ScanFactors = {
-    shelfStrength: supportShelf ? supportShelf.strength : 0,
+    ideal: idealScore,
+    gapQuality: gapPlay ? gapPlay.quality : 0,
     rsExcess: (safe(rs.excess1mo) + safe(rs.excess3mo)) / 2,
+    avwap: avwapScore,
     pinchSpread: pinch ? pinch.spread : NaN,
-    proximity: proximityPct ?? NaN,
-    contraction: Number.isFinite(atrNow) && Number.isFinite(atrPrior) && atrPrior > 0 ? atrNow / atrPrior : NaN,
+    contraction:
+      Number.isFinite(atrNow) && Number.isFinite(atrPrior) && atrPrior > 0 ? atrNow / atrPrior : NaN,
   };
 
   return {
@@ -254,6 +392,7 @@ export function scanTicker(
     near50ma,
     rs,
     anchor,
+    anchoredFromHigh,
     profile,
     shelves,
     nearest,
@@ -261,8 +400,11 @@ export function scanTicker(
     supportMid,
     proximityPct,
     pocBelowPrice,
+    idealScore,
+    gapPlay,
     avwapAnchors,
     pinch,
+    avwap,
     atrNow,
     atrPrior,
     atrContracting,
@@ -304,21 +446,23 @@ export function scanUniverse(
   const results = inputs.map((input) => scanTicker(input, benchmark, config));
   if (results.length === 0) return results;
 
-  const shelfN = normalize(results.map((r) => r.factors.shelfStrength), false);
+  const idealN = normalize(results.map((r) => r.factors.ideal), false);
+  const gapN = normalize(results.map((r) => r.factors.gapQuality), false);
   const rsN = normalize(results.map((r) => r.factors.rsExcess), false);
+  const avwapN = normalize(results.map((r) => r.factors.avwap), false);
   const pinchN = normalize(results.map((r) => r.factors.pinchSpread), true);
-  const proxN = normalize(results.map((r) => r.factors.proximity), true);
   const contractN = normalize(results.map((r) => r.factors.contraction), true);
 
   const w = config.weights;
-  const wSum = w.shelf + w.rs + w.pinch + w.proximity + w.contraction || 1;
+  const wSum = w.ideal + w.gap + w.rs + w.avwap + w.pinch + w.contraction || 1;
 
   results.forEach((r, i) => {
     const raw =
-      shelfN[i] * w.shelf +
+      idealN[i] * w.ideal +
+      gapN[i] * w.gap +
       rsN[i] * w.rs +
+      avwapN[i] * w.avwap +
       pinchN[i] * w.pinch +
-      proxN[i] * w.proximity +
       contractN[i] * w.contraction;
     r.score = (raw / wSum) * 100;
   });
@@ -337,6 +481,9 @@ export function scanUniverse(
     return b.score - a.score;
   });
 }
+
+// `chooseScanAnchor` retained as the election fallback; re-exported for callers.
+export { chooseScanAnchor };
 
 // ---- formatting helpers used in gate details ------------------------------
 function safe(v: number): number {

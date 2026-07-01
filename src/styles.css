@@ -731,6 +731,39 @@ td.tk {
   gap: 4px;
 }
 
+.panel.play {
+  border-color: var(--accent);
+  background: linear-gradient(180deg, rgba(91, 141, 239, 0.1), var(--panel-2));
+}
+
+.play-line {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.play-badge {
+  display: inline-block;
+  background: rgba(245, 200, 66, 0.16);
+  color: var(--gap);
+  font-weight: 700;
+  font-size: 10.5px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.ideal-badge {
+  display: inline-block;
+  background: rgba(38, 166, 154, 0.16);
+  color: var(--up);
+  font-weight: 700;
+  font-size: 10.5px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
 .checklist {
   display: flex;
   flex-direction: column;

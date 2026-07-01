@@ -50,3 +50,23 @@ export function defaultAnchorIndex(candles: Candle[], lookback = 5, minBars = 20
   }
   return Math.floor(candles.length * 0.4);
 }
+
+/**
+ * Mirror of {@link defaultAnchorIndex} for swing highs: the most significant
+ * (highest-priced) swing high that leaves at least `minBars` of action. This is
+ * the anchor for a pullback-from-a-high setup (e.g. anchoring from a major
+ * pivot high and reading the volume shelf price has fallen into).
+ */
+export function defaultAnchorHighIndex(candles: Candle[], lookback = 5, minBars = 20): number {
+  if (candles.length <= minBars) return 0;
+  const lastAllowed = candles.length - minBars;
+  const swings = detectSwings(candles, lookback).filter(
+    (s) => s.kind === "high" && s.index <= lastAllowed,
+  );
+  if (swings.length > 0) {
+    let best = swings[0];
+    for (const s of swings) if (s.price > best.price) best = s;
+    return best.index;
+  }
+  return Math.floor(candles.length * 0.4);
+}

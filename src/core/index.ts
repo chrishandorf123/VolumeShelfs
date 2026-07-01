@@ -4,6 +4,8 @@ export * from "./shelves";
 export * from "./swings";
 export * from "./indicators";
 export * from "./avwap";
+export * from "./avwapStrategy";
+export * from "./gapPlay";
 export * from "./relativeStrength";
 export * from "./anchor";
 export * from "./scanner";

@@ -1,5 +1,6 @@
 import {
   DEFAULT_SCAN_CONFIG,
+  anchoredVwapBands,
   anchoredVwapSeries,
   buildTradePlan,
   detectGaps,
@@ -22,13 +23,14 @@ const $ = <T extends HTMLElement>(id: string): T => {
 };
 
 const LS_KEY = (id: string) => `vs.key.${id}`;
-const GATE_ORDER = ["liquidity", "trend", "rs", "shelf", "pinch", "contraction"] as const;
+const GATE_ORDER = ["liquidity", "trend", "rs", "shelf", "gap", "avwap", "contraction"] as const;
 const GATE_SHORT: Record<string, string> = {
   liquidity: "Liq",
   trend: "Trend",
   rs: "RS",
   shelf: "Shelf",
-  pinch: "Pinch",
+  gap: "Gap",
+  avwap: "AVWAP",
   contraction: "Cont",
 };
 
@@ -55,10 +57,11 @@ const THRESHOLDS: ThresholdSpec[] = [
 ];
 
 const WEIGHTS: Array<{ key: keyof ScanConfig["weights"]; label: string }> = [
-  { key: "shelf", label: "Shelf strength" },
+  { key: "ideal", label: "Ideal shelf" },
+  { key: "gap", label: "Gap play" },
   { key: "rs", label: "Rel. strength" },
+  { key: "avwap", label: "AVWAP" },
   { key: "pinch", label: "AVWAP pinch" },
-  { key: "proximity", label: "Proximity" },
   { key: "contraction", label: "Contraction" },
 ];
 
@@ -106,7 +109,8 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
   }
   const syncProviderKey = () => {
     const p = getProvider(els.scanProvider.value);
-    els.scanKeyField.hidden = !p?.requiresApiKey;
+    // Only reveal the key field in live mode (demo mode hides the whole source row).
+    els.scanKeyField.hidden = source !== "live" || !p?.requiresApiKey;
     if (p) els.scanApiKey.value = localStorage.getItem(LS_KEY(p.id)) ?? "";
   };
   els.scanProvider.addEventListener("change", syncProviderKey);
@@ -241,7 +245,13 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
         const shelf = r.supportShelf
           ? `${r.supportShelf.priceLow.toFixed(2)}–${r.supportShelf.priceHigh.toFixed(2)} <span class="muted">${r.supportShelf.strength.toFixed(1)}×</span>`
           : "<span class='muted'>—</span>";
-        const pinch = r.pinch ? `${(r.pinch.spread * 100).toFixed(1)}%${r.pinch.priceInside ? " ✓" : ""}` : "—";
+        const gp = r.gapPlay;
+        const play =
+          gp && gp.active
+            ? `<span class="play-badge">GAP ${(gp.airPocketPct * 100).toFixed(0)}% · ${gp.rr.toFixed(1)}R</span>`
+            : r.idealScore >= 0.4
+              ? `<span class="ideal-badge">Shelf ${(r.idealScore * 100).toFixed(0)}</span>`
+              : "<span class='muted'>—</span>";
         return `<tr data-ticker="${r.ticker}" class="${r.ticker === selected ? "sel" : ""}">
           <td class="muted">${i + 1}</td>
           <td class="tk">${r.ticker}${r.passedAll ? ' <span class="apex-badge">A+</span>' : ""}</td>
@@ -250,7 +260,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
           <td>${formatPrice(r.price)}</td>
           <td class="${r.rs.excess3mo >= 0 ? "pos" : "neg"}">${fmtPct(r.rs.excess3mo)}</td>
           <td>${shelf}</td>
-          <td>${pinch}</td>
+          <td>${play}</td>
         </tr>`;
       })
       .join("");
@@ -272,36 +282,94 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
 
   function renderDetail(r: ScanResult): void {
     els.detailHead.innerHTML = `<h2>${r.ticker} <span class="score-pill">score ${r.score.toFixed(0)}</span>${r.passedAll ? ' <span class="apex-badge">A+</span>' : ""}</h2>
-      <p class="muted">Anchored at ${r.anchor.label} · ${r.shelves.length} shelves · POC ${formatPrice(r.profile.poc.mid)} · ${r.gatesPassed}/6 gates</p>`;
+      <p class="muted">Anchored at ${r.anchor.label}${r.anchoredFromHigh ? " (from high)" : ""} · ${r.shelves.length} shelves · POC ${formatPrice(r.profile.poc.mid)} · ${r.gatesPassed}/7 gates</p>`;
 
     if (!chart) chart = new VolumeShelfsChart($<HTMLCanvasElement>("scanChart"));
     chart.setModel(buildChartModel(r));
     chart.resize();
 
-    els.detailPanels.innerHTML = gatesPanel(r) + tradePlanPanel(r) + checklistPanel(r);
+    els.detailPanels.innerHTML =
+      mainPlayPanel(r) + avwapPanel(r) + gatesPanel(r) + tradePlanPanel(r) + checklistPanel(r);
+  }
+
+  function mainPlayPanel(r: ScanResult): string {
+    const gp = r.gapPlay;
+    if (gp && gp.active) {
+      return `<div class="panel play"><h2>Main play · volume-gap traverse</h2>
+        <p class="play-line">Hold the <b>${gp.entryShelf.priceLow.toFixed(2)}–${gp.entryShelf.priceHigh.toFixed(2)}</b> shelf, ride the
+        <b>${(gp.airPocketPct * 100).toFixed(0)}%</b> air pocket to <b>${formatPrice(gp.target)}</b>${gp.targetShelf ? " (next shelf)" : ""}.</p>
+        <div class="summary">
+          <div class="stat"><span class="k">Entry</span><span class="v">${formatPrice(gp.entry)}</span></div>
+          <div class="stat"><span class="k">Target</span><span class="v pos">${formatPrice(gp.target)}</span></div>
+          <div class="stat"><span class="k">Stop</span><span class="v neg">${formatPrice(gp.stop)}</span></div>
+          <div class="stat"><span class="k">Reward / R:R</span><span class="v">${(gp.rewardPct * 100).toFixed(0)}% · ${gp.rr.toFixed(1)}R</span></div>
+        </div></div>`;
+    }
+    if (r.idealScore >= 0.4 && r.supportShelf) {
+      const s = r.supportShelf;
+      return `<div class="panel play"><h2>Main play · shelf at price</h2>
+        <p class="play-line">Price is pulling into the <b>${s.priceLow.toFixed(2)}–${s.priceHigh.toFixed(2)}</b> volume shelf
+        (${s.strength.toFixed(1)}× mean)${r.anchoredFromHigh ? ", anchored from the dominant high" : ""}. Ideal score ${(r.idealScore * 100).toFixed(0)}.</p></div>`;
+    }
+    return `<div class="panel play"><h2>Main play</h2><div class="empty">No active volume-gap or shelf-at-price setup right now.</div></div>`;
+  }
+
+  function avwapPanel(r: ScanResult): string {
+    const a = r.avwap;
+    const st = a.keyState;
+    const regimeCls = st.regime === "bullish" ? "pos" : st.regime === "bearish" ? "neg" : "";
+    const ev =
+      a.event === "reclaim"
+        ? "reclaim ↑"
+        : a.event === "loss"
+          ? "loss ↓"
+          : a.event.replace("holding-", "holding ");
+    return `<div class="panel"><h2>AVWAP (Shannon)</h2>
+      <div class="summary">
+        <div class="stat"><span class="k">Anchor AVWAP</span><span class="v">${formatPrice(st.value)}</span></div>
+        <div class="stat"><span class="k">Regime</span><span class="v ${regimeCls}">${st.regime}</span></div>
+        <div class="stat"><span class="k">Slope · side</span><span class="v">${st.slope} · ${st.priceAbove ? "above" : "below"}</span></div>
+        <div class="stat"><span class="k">Event</span><span class="v">${ev}</span></div>
+        <div class="stat"><span class="k">Long AVWAP</span><span class="v ${a.bullish ? "pos" : ""}">${a.bullish ? "above rising" : a.reclaim ? "reclaim" : "below"}</span></div>
+        <div class="stat"><span class="k">Pinch</span><span class="v">${r.pinch ? `${(r.pinch.spread * 100).toFixed(1)}%${r.pinch.priceInside ? " ✓" : ""}` : "—"}</span></div>
+      </div></div>`;
   }
 
   function buildChartModel(r: ScanResult): ChartModel {
     const candles = lastInputs.find((i) => i.ticker === r.ticker)?.candles ?? [];
+    // Show only the significant air pockets (top few by height) so the chart
+    // stays readable rather than labelling every thin low-volume row.
+    const allGaps = detectGaps(r.profile, { shelfThreshold: 0.55, gapThreshold: 0.15 });
+    const gaps = allGaps
+      .filter((g) => (g.priceHigh - g.priceLow) / r.price >= 0.05)
+      .sort((a, b) => b.priceHigh - b.priceLow - (a.priceHigh - a.priceLow))
+      .slice(0, 4);
     const analysis: ProfileAnalysis = {
       shelves: r.shelves,
-      gaps: detectGaps(r.profile, { shelfThreshold: 0.55, gapThreshold: 0.15 }),
+      gaps,
       nearestDemand: r.nearest.below,
       nearestSupply: r.nearest.above,
     };
     const closeArr = candles.map((c) => c.close);
     const series: SeriesOverlay[] = [];
-    r.avwapAnchors.forEach((a, i) => {
-      const inPinch = r.pinch?.members.some((m) => m.label === a.label) ?? false;
-      series.push({
-        label: `AVWAP ${a.label}`,
-        values: anchoredVwapSeries(candles, a.index),
-        color: AVWAP_COLORS[i % AVWAP_COLORS.length],
-        dashed: !inPinch,
+    // Shannon AVWAP std-dev bands + the key (break-even) AVWAP at the anchor,
+    // plus only the AVWAPs that form a pinch (confluence) to avoid clutter.
+    const bands = anchoredVwapBands(candles, r.anchor.index, 1);
+    series.push({ label: "+1σ", values: bands.upper, color: "rgba(91,141,239,0.25)", dashed: true });
+    series.push({ label: "−1σ", values: bands.lower, color: "rgba(91,141,239,0.25)", dashed: true });
+    series.push({ label: "AVWAP", values: bands.vwap, color: "#5b8def" });
+    const pinchLabels = new Set(r.pinch?.members.map((m) => m.label) ?? []);
+    r.avwapAnchors
+      .filter((a) => pinchLabels.has(a.label))
+      .forEach((a, i) => {
+        series.push({
+          label: `AVWAP ${a.label}`,
+          values: anchoredVwapSeries(candles, a.index),
+          color: AVWAP_COLORS[(i + 1) % AVWAP_COLORS.length],
+        });
       });
-    });
-    series.push({ label: "50MA", values: smaSeries(closeArr, 50), color: "rgba(139,149,167,0.9)" });
-    series.push({ label: "200MA", values: smaSeries(closeArr, 200), color: "rgba(239,83,80,0.7)" });
+    series.push({ label: "50MA", values: smaSeries(closeArr, 50), color: "rgba(139,149,167,0.85)" });
+    series.push({ label: "200MA", values: smaSeries(closeArr, 200), color: "rgba(239,83,80,0.65)" });
 
     const plan = buildTradePlan(r);
     const levels = plan
@@ -331,7 +399,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
         <span class="dot"></span><span class="gl">${gate.label}</span>
         <span class="gd muted">${escapeHtml(gate.detail)}</span></div>`;
     }).join("");
-    return `<div class="panel"><h2>Gates (${r.gatesPassed}/6)</h2>${rows}</div>`;
+    return `<div class="panel"><h2>Gates (${r.gatesPassed}/7)</h2>${rows}</div>`;
   }
 
   function tradePlanPanel(r: ScanResult): string {
@@ -339,12 +407,14 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     if (!plan) return `<div class="panel"><h2>Trade plan</h2><div class="empty">No support shelf — not actionable as a long.</div></div>`;
     const lvl = (k: string, v: number, cls = "") => `<div class="stat"><span class="k">${k}</span><span class="v ${cls}">${formatPrice(v)}</span></div>`;
     const notes = plan.notes.map((n) => `<li>${escapeHtml(n)}</li>`).join("");
-    return `<div class="panel"><h2>Trade plan</h2>
+    const t1Label = plan.isGapPlay ? "T1 (far shelf)" : "T1 (POC/HVN)";
+    const t2Label = plan.isGapPlay ? "T2 (beyond)" : "T2 (VAH+)";
+    return `<div class="panel"><h2>Trade plan${plan.isGapPlay ? " · gap play" : ""}</h2>
       <div class="summary">
         ${lvl("Entry (reclaim)", plan.entry)}
         ${lvl("Stop (shelf low)", plan.stop, "neg")}
-        ${lvl("T1 (POC/HVN)", plan.t1, "pos")}
-        ${lvl("T2 (VAH+)", plan.t2, "pos")}
+        ${lvl(t1Label, plan.t1, "pos")}
+        ${lvl(t2Label, plan.t2, "pos")}
         <div class="stat"><span class="k">Risk</span><span class="v">${(plan.riskPct * 100).toFixed(1)}%</span></div>
         <div class="stat"><span class="k">R to T1 / T2</span><span class="v">${plan.rMultipleT1.toFixed(1)}R / ${plan.rMultipleT2.toFixed(1)}R</span></div>
       </div>

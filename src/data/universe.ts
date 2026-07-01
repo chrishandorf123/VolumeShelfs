@@ -106,6 +106,17 @@ const ARCHETYPES: Array<{ ticker: string; build: () => Candle[] }> = [
   // Steady compounders with a recent base.
   { ticker: "GRND", build: () => leader(120, 28, 0.7) },
   { ticker: "TREN", build: () => leader(133, 48, 0.95) },
+  // ASST-style pullback-from-a-high into a fat volume shelf (the reference
+  // "ideal" anchor case): pivot high, decline, rally, then a heavy base the
+  // price has fallen into. Anchored from the high, the shelf sits at price.
+  { ticker: "ASST", build: () => buildPhasedSeries(314, 16, [
+      { bars: 20, drift: 0.018, vol: 0.02, volume: 2_500_000 }, // run to the ~24 pivot high
+      { bars: 35, drift: -0.02, vol: 0.025, volume: 3_000_000 }, // decline off the high
+      { bars: 20, drift: -0.02, vol: 0.03, volume: 3_500_000 }, // spike to the ~7 low
+      { bars: 60, drift: 0.016, vol: 0.022, volume: 2_500_000 }, // rally to ~19
+      { bars: 35, drift: -0.013, vol: 0.018, volume: 5_500_000 }, // heavy pullback
+      { bars: 70, drift: -0.001, vol: 0.02, volume: 6_000_000 }, // heavy base / shelf ~11-13
+    ]) },
 ];
 
 export interface UniverseTicker {

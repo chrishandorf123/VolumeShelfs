@@ -1,6 +1,7 @@
 import type {
   AnchoredVolumeProfile,
   ProfileBin,
+  ValueArea,
   VolumeGap,
   VolumeShelf,
   ZoneKind,
@@ -184,6 +185,46 @@ export function detectHvnShelves(
   }
   if (runLow >= 0) flush(runLow, bins.length - 1);
   return shelves;
+}
+
+export interface ShelfAtPrice {
+  shelf: ScoredShelf;
+  /** Distance from price to the nearest shelf edge, as a fraction (0 if inside). */
+  edgePct: number;
+  inside: boolean;
+  /** strength ÷ (1 + edgePct·proxK) — fat shelves at price score highest. */
+  score: number;
+}
+
+/**
+ * Find the fattest shelf sitting AT the current price (inside it, or within
+ * `maxEdgePct` of an edge). Used to elect the anchor whose profile best
+ * "explains" where price is trading. Returns null when no qualifying shelf
+ * exists.
+ */
+export function bestShelfAtPrice(
+  shelves: ScoredShelf[],
+  price: number,
+  maxEdgePct = 0.05,
+  proxK = 20,
+  shelfK = 1.5,
+): ShelfAtPrice | null {
+  let best: ShelfAtPrice | null = null;
+  for (const s of shelves) {
+    if (s.strength < shelfK) continue;
+    const inside = price >= s.priceLow && price <= s.priceHigh;
+    const edge = inside ? 0 : Math.min(Math.abs(price - s.priceLow), Math.abs(price - s.priceHigh));
+    const edgePct = price > 0 ? edge / price : Infinity;
+    if (edgePct > maxEdgePct) continue;
+    const score = s.strength / (1 + edgePct * proxK);
+    if (!best || score > best.score) best = { shelf: s, edgePct, inside, score };
+  }
+  return best;
+}
+
+/** Whether a shelf's row span overlaps the profile's value area. */
+export function shelfOverlapsValueArea(shelf: VolumeShelf, valueArea: ValueArea): boolean {
+  return !(shelf.highIndex < valueArea.lowIndex || shelf.lowIndex > valueArea.highIndex);
 }
 
 export interface NearestShelves {
