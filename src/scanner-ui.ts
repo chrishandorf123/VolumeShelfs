@@ -274,17 +274,30 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
   // ---- detail-chart timeframe bar ---------------------------------------
   const tfBarScan = $("tfBarScan");
   const activeScanTf = (): number | null => {
-    const btn = tfBarScan.querySelector<HTMLButtonElement>(".tf.active");
+    const btn = tfBarScan.querySelector<HTMLButtonElement>(".tf[data-bars].active");
     const bars = btn ? Number(btn.dataset.bars) : 126;
     return bars > 0 ? bars : null;
   };
-  tfBarScan.querySelectorAll<HTMLButtonElement>(".tf").forEach((btn) => {
+  // Only the buttons with data-bars are timeframes (the ⛶ Focus toggle isn't).
+  tfBarScan.querySelectorAll<HTMLButtonElement>(".tf[data-bars]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      tfBarScan.querySelectorAll(".tf").forEach((b) => b.classList.toggle("active", b === btn));
+      tfBarScan.querySelectorAll(".tf[data-bars]").forEach((b) => b.classList.toggle("active", b === btn));
       const bars = Number(btn.dataset.bars);
       chart?.setVisibleCount(bars > 0 ? bars : null);
     });
   });
+
+  // Focus mode: collapse the results list so the chart gets the full width.
+  const scanWorkspace = document.querySelector<HTMLElement>("#view-scanner .scanner-workspace");
+  const scanMaxBtn = $<HTMLButtonElement>("scanChartMax");
+  const applyScanFocus = (on: boolean) => {
+    scanWorkspace?.classList.toggle("chart-max", on);
+    scanMaxBtn.classList.toggle("active", on);
+    localStorage.setItem("vs.focusScan", on ? "1" : "0");
+    chart?.resize();
+  };
+  scanMaxBtn.addEventListener("click", () => applyScanFocus(!scanWorkspace?.classList.contains("chart-max")));
+  if (localStorage.getItem("vs.focusScan") === "1") applyScanFocus(true);
 
   // ---- universe source toggle -------------------------------------------
   els.uniSource.querySelectorAll<HTMLButtonElement>(".seg-btn").forEach((btn) => {

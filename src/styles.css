@@ -848,7 +848,7 @@ details.panel > *:not(summary) {
 }
 
 .results-pane {
-  flex: 1 1 55%;
+  flex: 1 1 50%;
   min-width: 0;
   overflow: auto;
   border-right: 1px solid var(--border);
@@ -972,7 +972,7 @@ td.tk {
 
 /* ---- detail pane ---- */
 .detail-pane {
-  flex: 1 1 45%;
+  flex: 1 1 50%;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -1003,7 +1003,7 @@ td.tk {
 }
 
 .detail-chart {
-  height: 340px;
+  height: 420px;
   flex: 0 0 auto;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -2526,4 +2526,29 @@ button.ghost:hover {
   font-size: 12px;
   font-weight: 700;
   line-height: 1.45;
+}
+
+/* ---- chart focus mode (bigger price graph) ---- */
+.tf-bar .tf-max {
+  margin-left: auto;
+  font-weight: 700;
+}
+.tf-bar .tf-max.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 10px rgba(91, 141, 239, 0.45);
+}
+/* Explore: hide the sidebar, chart takes the full width. */
+.workspace.chart-max .sidebar {
+  display: none;
+}
+/* Scanner: collapse the results list and grow the chart. */
+.scanner-workspace.chart-max .results-pane {
+  display: none;
+}
+.scanner-workspace.chart-max .detail-pane {
+  flex: 1 1 100%;
+}
+.scanner-workspace.chart-max .detail-chart {
+  height: min(68vh, 720px);
 }

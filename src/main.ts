@@ -416,21 +416,34 @@ async function loadFromCsv(file: File): Promise<void> {
 
 // ---- timeframe + verdict ---------------------------------------------------
 function activeTfBars(): number | null {
-  const btn = els.tfBar.querySelector<HTMLButtonElement>(".tf.active");
+  const btn = els.tfBar.querySelector<HTMLButtonElement>(".tf[data-bars].active");
   const bars = btn ? Number(btn.dataset.bars) : 126;
   return bars > 0 ? bars : null;
 }
 
 function initTimeframe(): void {
-  els.tfBar.querySelectorAll<HTMLButtonElement>(".tf").forEach((btn) => {
+  // Only the buttons with data-bars are timeframes (the ⛶ Focus toggle isn't).
+  els.tfBar.querySelectorAll<HTMLButtonElement>(".tf[data-bars]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      els.tfBar.querySelectorAll(".tf").forEach((b) => b.classList.toggle("active", b === btn));
+      els.tfBar.querySelectorAll(".tf[data-bars]").forEach((b) => b.classList.toggle("active", b === btn));
       const bars = Number(btn.dataset.bars);
       chart.setVisibleCount(bars > 0 ? bars : null);
       // Re-anchor and refresh the coach for the newly selected window.
       recompute();
     });
   });
+
+  // Focus mode: hide the sidebar so the price graph gets the full width.
+  const workspace = document.querySelector<HTMLElement>("#view-explore .workspace");
+  const maxBtn = document.getElementById("chartMax");
+  const applyFocus = (on: boolean) => {
+    workspace?.classList.toggle("chart-max", on);
+    maxBtn?.classList.toggle("active", on);
+    localStorage.setItem("vs.focusExplore", on ? "1" : "0");
+    chart.resize();
+  };
+  maxBtn?.addEventListener("click", () => applyFocus(!workspace?.classList.contains("chart-max")));
+  if (localStorage.getItem("vs.focusExplore") === "1") applyFocus(true);
 }
 
 /**
