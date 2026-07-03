@@ -7,6 +7,7 @@ import {
   outcomeOf,
   positionAdvice,
   realizedR,
+  trimPosition,
   type Position,
 } from "./journal";
 
@@ -86,6 +87,38 @@ describe("short positions", () => {
     expect(positionAdvice(p, 89)).toMatch(/break-even/);
     expect(positionAdvice(p, 79)).toMatch(/T2/);
     expect(positionAdvice(p, 101)).toMatch(/hold/i);
+  });
+});
+
+describe("trimPosition (T1 playbook: sell half, stop to break-even)", () => {
+  it("splits a position: closed slice keeps original risk, runner risks ~0", () => {
+    const p = opened(10);
+    const { closed, remainder } = trimPosition(p, 110, T0 + 5);
+    expect(closed.shares).toBe(5);
+    expect(closed.status).toBe("closed");
+    expect(realizedR(closed)).toBeCloseTo(10 / 6, 8); // measured against the ORIGINAL stop
+    expect(remainder).not.toBeNull();
+    expect(remainder!.shares).toBe(5);
+    expect(remainder!.stop).toBe(100); // break-even
+    expect(remainder!.status).toBe("open");
+    // The runner no longer contributes portfolio heat.
+    expect(journalStats([remainder!]).openRisk).toBe(0);
+  });
+
+  it("trimming a 1-share position just closes it", () => {
+    const one = openPosition("X", PLAN, 1, T0);
+    const { closed, remainder } = trimPosition(one, 110, T0 + 5);
+    expect(remainder).toBeNull();
+    expect(closed.status).toBe("closed");
+    expect(closed.shares).toBe(1);
+  });
+
+  it("works mirrored for shorts (cover half, stop to entry)", () => {
+    const s = openPosition("bear", { entry: 100, stop: 106, t1: 90, t2: 80 }, 10, T0, 100, "short");
+    const { closed, remainder } = trimPosition(s, 90, T0 + 5);
+    expect(realizedR(closed)).toBeCloseTo(10 / 6, 8);
+    expect(remainder!.stop).toBe(100);
+    expect(journalStats([remainder!]).openRisk).toBe(0);
   });
 });
 

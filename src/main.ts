@@ -51,6 +51,7 @@ import { earlyPanelHtml, proofPanelHtml } from "./early-view";
 import { anomalyPanelHtml, institutionalPanelHtml } from "./tape-view";
 import { celebrate } from "./celebrate";
 import { loadPositions } from "./journal-store";
+import { sectorOf } from "./data/sectors";
 import { confirmationPanelHtml, confluencePanelHtml, thesisPanelHtml } from "./thesis-view";
 import { tradePlanPanelHtml, wirePositionSizer, wireTrackButton } from "./trade-view";
 import { modelPanelHtml } from "./model-view";
@@ -517,6 +518,12 @@ function renderExploreReco(r: ScanResult | null): void {
     positions: loadPositions(),
     regime,
     tape: tape ? { level: tape.level, character: tape.character } : undefined,
+    sectorExposure: {
+      sector: sectorOf(symbol),
+      openInSector: loadPositions().filter(
+        (p) => p.status === "open" && sectorOf(p.symbol) === sectorOf(symbol),
+      ).length,
+    },
   });
   const fc = finalCall({
     side,

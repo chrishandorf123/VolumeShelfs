@@ -26,6 +26,8 @@ import {
   realizedR,
   resampleWeekly,
   edgeBreakdown,
+  sectorStrength,
+  trimPosition,
   sideOf,
   recoContextFromScan,
   recommend,
@@ -55,7 +57,8 @@ import {
 import { VolumeShelfsChart, type ChartModel, type SeriesOverlay } from "./chart/chart";
 import { formatPrice, formatVolume } from "./chart/scale";
 import { PROVIDERS, getProvider, type Interval, type Quote } from "./data";
-import { loadPositions, removePosition, updatePosition } from "./journal-store";
+import { loadPositions, removePosition, savePositions, updatePosition } from "./journal-store";
+import { sectorOf } from "./data/sectors";
 import { buildDemoBenchmark, buildDemoUniverse } from "./data/universe";
 import { marketUniverse } from "./data/marketUniverse";
 import { Pacer, minIntervalMs } from "./data/rateLimit";
@@ -185,7 +188,10 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     posExport: $<HTMLButtonElement>("posExport"),
     rescanField: $("rescanField"),
     rescanEvery: $<HTMLSelectElement>("rescanEvery"),
+    sectorBoard: $("sectorBoard"),
   };
+  /** Active sector filter for the results table (null = all). */
+  let sectorFilter: string | null = null;
 
   // ONE pacer for ALL provider traffic (scan passes, monitor quotes and any
   // in-provider fallback calls), so overlapping loops can't multiply the
@@ -564,6 +570,8 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     proofCache = new Map();
     regime = marketRegime(lastBenchmark);
     els.regimeWrap.innerHTML = regimeChipHtml(regime);
+    sectorFilter = null; // fresh scan clears any group filter
+    renderSectorBoard();
     renderTable();
     renderDigest();
     renderMissionControl();
@@ -579,6 +587,43 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     results = rescoreUniverse(results, config.weights);
     renderTable();
     renderDigest();
+  }
+
+  // ---- sector strength board -----------------------------------------------
+  // Leaders cluster in leading groups: rank sectors by breadth + RS and let a
+  // click filter the table to that group (click again to clear).
+  function renderSectorBoard(): void {
+    const rows = sectorStrength(
+      results.map((r) => ({
+        ticker: r.ticker,
+        sector: sectorOf(r.ticker),
+        rsExcess: r.rs.excess3mo,
+        trendPass: r.gates.trend.pass,
+        score: r.score,
+      })),
+    ).filter((s) => s.sector !== "Index ETF");
+    els.sectorBoard.hidden = rows.length === 0;
+    if (rows.length === 0) return;
+    els.sectorBoard.innerHTML =
+      `<span class="sb-label">GROUPS</span>` +
+      rows
+        .map((s) => {
+          const cls = s.breadth >= 0.6 ? "hot" : s.breadth >= 0.4 ? "warm" : "cold";
+          const active = sectorFilter === s.sector ? " active" : "";
+          return `<button class="sb-chip ${cls}${active}" type="button" data-sector="${escapeHtml(s.sector)}"
+            title="${s.n} names · ${(s.breadth * 100).toFixed(0)}% in uptrends · avg RS ${fmtPct(s.avgRs)} · leaders: ${s.leaders.join(", ")} — click to filter the table">
+            ${escapeHtml(s.sector)} <b>${(s.breadth * 100).toFixed(0)}%</b> <small>${fmtPct(s.avgRs)}</small></button>`;
+        })
+        .join("");
+    els.sectorBoard.querySelectorAll<HTMLButtonElement>(".sb-chip").forEach((chip) => {
+      chip.addEventListener("click", () => {
+        const sec = chip.dataset.sector!;
+        sectorFilter = sectorFilter === sec ? null : sec;
+        renderSectorBoard();
+        renderTable();
+        setStatus(sectorFilter ? `Table filtered to ${sectorFilter}.` : "Sector filter cleared.", "ok");
+      });
+    });
   }
 
   // ---- "top trades right now" digest --------------------------------------
@@ -657,7 +702,8 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
 
   // ---- results table -----------------------------------------------------
   function renderTable(): void {
-    const rows = els.onlyPass.checked ? results.filter((r) => r.passedAll) : results;
+    let rows = els.onlyPass.checked ? results.filter((r) => r.passedAll) : results;
+    if (sectorFilter) rows = rows.filter((r) => sectorOf(r.ticker) === sectorFilter);
     els.resultsEmpty.hidden = rows.length > 0;
     els.table.hidden = rows.length === 0;
     els.resultsBody.innerHTML = rows
@@ -1140,7 +1186,8 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
             : "No price yet — run the monitor to mark it."
           : `Closed at ${formatPrice(p.exitPrice!)}.`;
         const actions = isOpen
-          ? `<button class="ghost pos-close" type="button" data-close="${p.id}" title="Close the position at a price you enter (defaults to the last known)">Close</button>`
+          ? `<button class="ghost pos-trim" type="button" data-trim="${p.id}" title="Sell half at a price you enter — the runner's stop moves to break-even (the T1 playbook)">Trim ½</button>
+             <button class="ghost pos-close" type="button" data-close="${p.id}" title="Close the position at a price you enter (defaults to the last known)">Close</button>`
           : "";
         return `<tr class="mon-row">
           <td>${badge}</td>
@@ -1249,6 +1296,31 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     const t = e.target as HTMLElement;
     const closeId = t.closest<HTMLElement>("[data-close]")?.dataset.close;
     const delId = t.closest<HTMLElement>("[data-del]")?.dataset.del;
+    const trimId = t.closest<HTMLElement>("[data-trim]")?.dataset.trim;
+    if (trimId) {
+      const all = loadPositions();
+      const idx = all.findIndex((x) => x.id === trimId);
+      if (idx < 0) return;
+      const p = all[idx];
+      const dflt = priceFor(p.symbol);
+      const raw = window.prompt(`Trim half of ${p.symbol} — sell price:`, Number.isFinite(dflt) ? dflt.toFixed(2) : "");
+      const price = Number(raw);
+      if (raw === null || !Number.isFinite(price) || price <= 0) return;
+      const { closed, remainder } = trimPosition(p, price, Date.now());
+      const next = [...all];
+      if (remainder) next[idx] = remainder;
+      else next.splice(idx, 1);
+      next.push(closed);
+      savePositions(next);
+      renderPositions();
+      setStatus(
+        remainder
+          ? `${p.symbol}: sold ${closed.shares} at ${formatPrice(price)} — runner's stop moved to break-even (${formatPrice(remainder.stop)}).`
+          : `${p.symbol} closed at ${formatPrice(price)}.`,
+        "ok",
+      );
+      return;
+    }
     if (closeId) {
       const p = loadPositions().find((x) => x.id === closeId);
       if (!p) return;
@@ -1331,6 +1403,12 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
       positions: loadPositions(),
       regime,
       tape: tape ? { level: tape.level, character: tape.character } : undefined,
+      sectorExposure: {
+        sector: sectorOf(r.ticker),
+        openInSector: loadPositions().filter(
+          (p) => p.status === "open" && sectorOf(p.symbol) === sectorOf(r.ticker),
+        ).length,
+      },
     });
     const fc = finalCall({
       side,

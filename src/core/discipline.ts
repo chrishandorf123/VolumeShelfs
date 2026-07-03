@@ -45,6 +45,8 @@ export interface DisciplineInput {
   regime: MarketRegime;
   /** Tape character from the manipulation scan (omit when unavailable). */
   tape?: Pick<AnomalyReport, "level" | "character">;
+  /** Open positions already in the candidate's sector (omit when unknown). */
+  sectorExposure?: { sector: string; openInSector: number };
 }
 
 const check = (id: string, label: string, level: DisciplineCheck["level"], message: string): DisciplineCheck => ({
@@ -170,6 +172,18 @@ export function checkDiscipline(input: DisciplineInput): DisciplineReport {
     checks.push(check("dd", "Drawdown", "warn", `Journal is ${dd.toFixed(1)}R off its peak — halve size and slow down until the curve turns.`));
   } else {
     checks.push(check("dd", "Drawdown", "pass", dd > 0 ? `${dd.toFixed(1)}R off the peak — within normal give-back.` : "Equity curve at its peak."));
+  }
+
+  // 7b. Sector concentration: three semis are one bet wearing three tickers.
+  if (input.sectorExposure && input.sectorExposure.sector !== "Other") {
+    const { sector, openInSector } = input.sectorExposure;
+    if (openInSector >= 3) {
+      checks.push(check("sector", "Sector concentration", "fail", `${openInSector} open positions already in ${sector} — this add is correlation, not diversification.`));
+    } else if (openInSector === 2) {
+      checks.push(check("sector", "Sector concentration", "warn", `2 open positions already in ${sector} — a third makes the group your whole book on a bad sector day.`));
+    } else {
+      checks.push(check("sector", "Sector concentration", "pass", openInSector === 1 ? `1 open position in ${sector} — room for one more.` : `No open exposure in ${sector}.`));
+    }
   }
 
   // 8. Tape quality: predatory manipulation blocks; smart-money games CAN be

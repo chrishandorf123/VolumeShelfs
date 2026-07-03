@@ -31,3 +31,4 @@ export * from "./institutional";
 export * from "./anomaly";
 export * from "./breakdown";
 export * from "./signalProof";
+export * from "./sectorStrength";

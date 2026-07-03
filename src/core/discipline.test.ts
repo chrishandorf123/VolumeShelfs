@@ -102,6 +102,22 @@ describe("tape-quality check (manipulation, both kinds)", () => {
   });
 });
 
+describe("sector-concentration check", () => {
+  it("passes with room, warns at 2, blocks at 3 in the same group", () => {
+    const at = (n: number) => checkDiscipline(base({ sectorExposure: { sector: "Semis", openInSector: n } }));
+    expect(at(0).checks.find((c) => c.id === "sector")?.level).toBe("pass");
+    expect(at(2).checks.find((c) => c.id === "sector")?.level).toBe("warn");
+    const blocked = at(3);
+    expect(blocked.checks.find((c) => c.id === "sector")?.level).toBe("fail");
+    expect(blocked.verdict).toBe("blocked");
+  });
+
+  it("skips when sector is unknown", () => {
+    const rep = checkDiscipline(base({ sectorExposure: { sector: "Other", openInSector: 5 } }));
+    expect(rep.checks.some((c) => c.id === "sector")).toBe(false);
+  });
+});
+
 describe("streak + drawdown helpers", () => {
   it("counts only the current tail of losses", () => {
     const ps = [win("A", T0), loss("B", T0 + 10), loss("C", T0 + 20)];

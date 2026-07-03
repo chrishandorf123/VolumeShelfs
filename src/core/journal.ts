@@ -69,6 +69,36 @@ export function closePosition(p: Position, exitPrice: number, now: number): Posi
   return { ...p, status: "closed", exitPrice, closedAt: now };
 }
 
+/**
+ * The playbook's T1 move, as a first-class action: sell part at `price`, keep
+ * the rest running with the stop moved to break-even. Returns the closed slice
+ * (a normal closed position for the stats) and the remainder (risk now ~0).
+ * Trimming a 1-share position just closes it.
+ */
+export function trimPosition(
+  p: Position,
+  price: number,
+  now: number,
+  fraction = 0.5,
+): { closed: Position; remainder: Position | null } {
+  const sellShares = Math.max(1, Math.floor(p.shares * fraction));
+  if (sellShares >= p.shares) return { closed: closePosition(p, price, now), remainder: null };
+  const closed: Position = {
+    ...p,
+    id: `${p.id}-trim-${now}`,
+    shares: sellShares,
+    status: "closed",
+    exitPrice: price,
+    closedAt: now,
+  };
+  const remainder: Position = {
+    ...p,
+    shares: p.shares - sellShares,
+    stop: p.entry, // break-even: the runner can no longer turn into a loss
+  };
+  return { closed, remainder };
+}
+
 export interface Mark {
   /** Open (or realized) P&L in dollars. */
   pnl: number;
