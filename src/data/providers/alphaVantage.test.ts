@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { easternToday, parseGlobalQuote, parseIntradayQuote } from "./alphaVantage";
+import {
+  classifyAsset,
+  easternToday,
+  parseExchangeRate,
+  parseGlobalQuote,
+  parseIntradayQuote,
+  parsePairSeries,
+} from "./alphaVantage";
 
 describe("easternToday", () => {
   it("formats as YYYY-MM-DD in US/Eastern", () => {
@@ -92,5 +99,81 @@ describe("parseIntradayQuote", () => {
     expect(q.price).toBe(193.6);
     expect(q.prevClose).toBe(193.6); // no prior-day bar → change 0, not NaN
     expect(q.changePct).toBe(0);
+  });
+});
+
+describe("classifyAsset", () => {
+  it("routes plain tickers to stocks, fiat pairs to FX and the rest to crypto", () => {
+    expect(classifyAsset("aapl")).toEqual({ kind: "stock", symbol: "AAPL" });
+    expect(classifyAsset("EUR/USD")).toEqual({ kind: "fx", from: "EUR", to: "USD" });
+    expect(classifyAsset("btc-usd")).toEqual({ kind: "crypto", base: "BTC", quote: "USD" });
+    expect(classifyAsset("ETH/EUR")).toEqual({ kind: "crypto", base: "ETH", quote: "EUR" });
+    expect(classifyAsset("BRK-B")).toEqual({ kind: "stock", symbol: "BRK-B" }); // 1-letter side ≠ pair
+  });
+});
+
+describe("parsePairSeries", () => {
+  it("parses FX daily bars and defaults the missing volume to 1", () => {
+    const candles = parsePairSeries(
+      {
+        "Time Series FX (Daily)": {
+          "2026-07-01": { "1. open": "1.10", "2. high": "1.12", "3. low": "1.09", "4. close": "1.11" },
+          "2026-06-30": { "1. open": "1.08", "2. high": "1.11", "3. low": "1.08", "4. close": "1.10" },
+        },
+      },
+      "Time Series FX",
+    );
+    expect(candles).toHaveLength(2);
+    expect(candles[0].close).toBe(1.1); // sorted ascending
+    expect(candles[1].volume).toBe(1);
+  });
+
+  it("parses crypto bars across both AV field formats", () => {
+    const modern = parsePairSeries(
+      {
+        "Time Series (Digital Currency Daily)": {
+          "2026-07-01": { "1. open": "60000", "2. high": "62000", "3. low": "59000", "4. close": "61000", "5. volume": "1234" },
+        },
+      },
+      "Time Series (Digital Currency",
+    );
+    expect(modern[0].close).toBe(61000);
+    expect(modern[0].volume).toBe(1234);
+    const legacy = parsePairSeries(
+      {
+        "Time Series (Digital Currency Daily)": {
+          "2026-07-01": {
+            "1a. open (USD)": "60000", "2a. high (USD)": "62000",
+            "3a. low (USD)": "59000", "4a. close (USD)": "61000", "5. volume": "99",
+          },
+        },
+      },
+      "Time Series (Digital Currency",
+    );
+    expect(legacy[0].close).toBe(61000);
+    expect(legacy[0].volume).toBe(99);
+  });
+});
+
+describe("parseExchangeRate", () => {
+  it("returns a live quote with an honest unknown change", () => {
+    const q = parseExchangeRate(
+      {
+        "Realtime Currency Exchange Rate": {
+          "5. Exchange Rate": "61234.56",
+          "6. Last Refreshed": "2026-07-03 14:22:01",
+        },
+      },
+      "btc/usd",
+    );
+    expect(q.symbol).toBe("BTC/USD");
+    expect(q.price).toBe(61234.56);
+    expect(q.live).toBe(true);
+    expect(Number.isNaN(q.changePct)).toBe(true); // renders as "—", not a fake 0%
+    expect(q.day).toBe("2026-07-03");
+  });
+
+  it("throws on a missing rate", () => {
+    expect(() => parseExchangeRate({}, "BTC/USD")).toThrow();
   });
 });

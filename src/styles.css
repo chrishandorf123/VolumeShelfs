@@ -2194,3 +2194,149 @@ button.primary:hover {
 @media (prefers-reduced-motion: reduce) {
   .final-call.fc-go, .mon-badge.mon-triggered { animation: none; }
 }
+
+/* ================= sweet-mode UI ================= */
+/* Shimmering accent line under the topbar. */
+.topbar::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), var(--up), var(--accent), transparent);
+  background-size: 220% 100%;
+  animation: shimmer 6s linear infinite;
+  opacity: 0.75;
+  pointer-events: none;
+}
+.topbar { position: relative; }
+@keyframes shimmer {
+  0% { background-position: 0% 0; }
+  100% { background-position: 220% 0; }
+}
+.brand h1 {
+  background: linear-gradient(90deg, var(--text), var(--accent) 65%, var(--up));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: 0.5px;
+}
+/* Themed scrollbars. */
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(var(--border), rgba(91, 141, 239, 0.45));
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+button.ghost {
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+button.ghost:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 10px rgba(91, 141, 239, 0.3);
+}
+.tf-bar .tf.active {
+  box-shadow: 0 0 10px rgba(91, 141, 239, 0.45);
+}
+.dg-medal {
+  filter: drop-shadow(0 0 5px rgba(91, 141, 239, 0.8));
+}
+
+/* ---- mission control ---- */
+.mission {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border);
+  background:
+    linear-gradient(120deg, rgba(91, 141, 239, 0.07), rgba(38, 166, 154, 0.05) 60%, transparent),
+    var(--panel);
+}
+.mc-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: rgba(14, 17, 23, 0.55);
+  backdrop-filter: blur(2px);
+  cursor: help;
+  transition: transform 0.12s, box-shadow 0.15s;
+  position: relative;
+  overflow: hidden;
+}
+.mc-tile:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 14px rgba(91, 141, 239, 0.18);
+}
+.mc-icon {
+  position: absolute;
+  right: 8px;
+  top: 7px;
+  font-size: 15px;
+  opacity: 0.85;
+}
+.mc-v {
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 0.3px;
+  font-variant-numeric: tabular-nums;
+}
+.mc-k {
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+  font-weight: 700;
+}
+.mc-tile.good .mc-v { color: var(--up); text-shadow: 0 0 12px rgba(38, 166, 154, 0.55); }
+.mc-tile.meh .mc-v { color: #f5c842; }
+.mc-tile.hot .mc-v { color: var(--down); text-shadow: 0 0 12px rgba(239, 83, 80, 0.5); }
+.mc-tile.mc-regime {
+  justify-content: center;
+  align-items: center;
+  flex-direction: row;
+}
+
+/* ---- equity curve + projection ---- */
+.pos-curve {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px 2px;
+}
+.pos-curve svg {
+  flex: 1 1 auto;
+  height: 46px;
+  min-width: 0;
+}
+.pc-zero {
+  stroke: var(--border);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+}
+.pc-line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.pc-line.up { stroke: var(--up); filter: drop-shadow(0 0 5px rgba(38, 166, 154, 0.6)); }
+.pc-line.down { stroke: var(--down); filter: drop-shadow(0 0 5px rgba(239, 83, 80, 0.5)); }
+.pc-label {
+  font-size: 10.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.pos-proj {
+  padding: 4px 12px 8px;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.pos-proj b { color: var(--text); }

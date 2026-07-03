@@ -18,6 +18,8 @@ import {
   nextSteps,
   pickTop,
   positionAdvice,
+  projectGrowth,
+  realizedR,
   sideOf,
   recoContextFromScan,
   recommend,
@@ -28,8 +30,10 @@ import {
   smaSeries,
   sortMonitorRows,
   type ChosenAnchor,
+  type JournalStats,
   type MarketRegime,
   type MonitorRow,
+  type Position,
   type MonitorStatus,
   type ProfileAnalysis,
   type Recommendation,
@@ -165,6 +169,8 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     posStats: $("posStats"),
     positionsBody: $("positionsBody"),
     regimeWrap: $("regimeWrap"),
+    missionControl: $("missionControl"),
+    posExport: $<HTMLButtonElement>("posExport"),
   };
 
   // ONE pacer for ALL provider traffic (scan passes, monitor quotes and any
@@ -452,6 +458,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     els.regimeWrap.innerHTML = regimeChipHtml(regime);
     renderTable();
     renderDigest();
+    renderMissionControl();
     if (results.length > 0) {
       const stillThere = selected && results.find((r) => r.ticker === selected);
       select(stillThere ? selected! : results[0].ticker);
@@ -618,7 +625,27 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     alertsFeed.unshift({ time, symbol: row.symbol, from: prev, to: row.status, note: row.note });
     if (alertsFeed.length > 20) alertsFeed.length = 20;
     if (row.status === "TRIGGERED") celebrate(`${row.symbol} just fired its trigger! 💰`);
+    if (els.monitorNotify.checked) beep();
     maybeNotify(row);
+  }
+
+  /** A short synthesized ping for status-change alerts (opt-in via Notify). */
+  function beep(): void {
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = 880;
+      gain.gain.value = 0.06;
+      osc.connect(gain).connect(ctx.destination);
+      osc.start();
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.25);
+      osc.stop(ctx.currentTime + 0.3);
+      window.setTimeout(() => void ctx.close(), 400);
+    } catch {
+      // Audio blocked before a user gesture — the visual alert still lands.
+    }
   }
 
   function maybeNotify(row: MonitorRow): void {
@@ -855,9 +882,46 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     return r ? r.price : NaN;
   }
 
+  /** Cumulative-R equity curve as an inline sparkline (needs ≥2 closed trades). */
+  function equityCurveSvg(closedChrono: Position[]): string {
+    const rs = closedChrono
+      .map((p) => realizedR(p))
+      .filter((r): r is number => r !== null && Number.isFinite(r));
+    if (rs.length < 2) return "";
+    let cum = 0;
+    const pts = [0, ...rs.map((r) => (cum += r))];
+    const min = Math.min(...pts, 0);
+    const max = Math.max(...pts, 0.001);
+    const W = 560;
+    const H = 46;
+    const pad = 3;
+    const x = (i: number) => pad + (i / (pts.length - 1)) * (W - 2 * pad);
+    const y = (v: number) => pad + (1 - (v - min) / (max - min)) * (H - 2 * pad);
+    const line = pts.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+    const last = pts[pts.length - 1];
+    return `<div class="pos-curve"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+      <line x1="0" y1="${y(0).toFixed(1)}" x2="${W}" y2="${y(0).toFixed(1)}" class="pc-zero"/>
+      <polyline points="${line}" class="pc-line ${last >= 0 ? "up" : "down"}"/>
+    </svg><span class="pc-label">${fmtR(last)} · equity curve</span></div>`;
+  }
+
+  /** "If the next 100 trades look like your last N" — the measured edge, projected. */
+  function projectionLine(stats: JournalStats): string {
+    if (stats.closed < 10 || !Number.isFinite(stats.winRate)) return "";
+    const riskFrac = (Number(localStorage.getItem("vs.riskpref")) || 1) / 100;
+    const p = projectGrowth(
+      { winRate: stats.winRate, avgWinR: stats.avgWinR, avgLossR: stats.avgLossR, riskFrac },
+      100,
+    );
+    return `<div class="pos-proj">📐 If the next 100 trades look like your last ${stats.closed} at ${(riskFrac * 100).toFixed(1)}% risk:
+      median <b>×${p.p50.toFixed(2)}</b> <span class="muted">(5%: ×${p.p05.toFixed(2)} · 95%: ×${p.p95.toFixed(2)})</span>
+      · risk of losing half: <b class="${p.riskOfRuin > 0.05 ? "neg" : "pos"}">${(p.riskOfRuin * 100).toFixed(1)}%</b></div>`;
+  }
+
   function renderPositions(): void {
     const positions = loadPositions();
     els.positionsSection.hidden = positions.length === 0;
+    renderMissionControl();
     if (positions.length === 0) return;
     const stats = journalStats(positions);
     els.posMeta.textContent = stats.open
@@ -904,12 +968,78 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
         </tr>`;
       })
       .join("");
-    els.positionsBody.innerHTML = `<table class="mon-table">
+    const closedChrono = positions
+      .filter((p) => p.status === "closed")
+      .sort((a, b) => (a.closedAt ?? 0) - (b.closedAt ?? 0));
+    els.positionsBody.innerHTML = `${equityCurveSvg(closedChrono)}${projectionLine(stats)}<table class="mon-table">
       <thead><tr>
         <th></th><th>Ticker</th><th>Opened</th><th>Entry × sh</th><th>Stop</th>
         <th>Last / Exit</th><th title="Open (or realized) P&L in dollars and in R — units of the initial risk">P&L</th>
         <th>Read</th><th></th>
       </tr></thead><tbody>${rowsHtml}</tbody></table>`;
+  }
+
+  // ---- mission control -----------------------------------------------------
+  // The "what should I do right now?" strip: market light, breadth, ready
+  // setups, positions needing action, portfolio heat and the measured edge.
+  function renderMissionControl(): void {
+    const positions = loadPositions();
+    const stats = journalStats(positions);
+    const hasData = results.length > 0 || positions.length > 0;
+    els.missionControl.hidden = !hasData;
+    if (!hasData) return;
+
+    const acct = Number(localStorage.getItem("vs.acct")) || 10000;
+    const breadth = results.length
+      ? results.filter((r) => r.gates.trend.pass).length / results.length
+      : NaN;
+    const ready = results.filter((r) => {
+      const v = recoOf(r).reco.verdict;
+      return v === "buy" || v === "buy-dip";
+    });
+    const open = positions.filter((p) => p.status === "open");
+    const needsAction = open.filter((p) => {
+      const pr = priceFor(p.symbol);
+      return Number.isFinite(pr) && !positionAdvice(p, pr).startsWith("Hold");
+    });
+    const heat = acct > 0 ? stats.openRisk / acct : 0;
+
+    const tile = (icon: string, k: string, v: string, cls = "", title = "") =>
+      `<div class="mc-tile ${cls}" ${title ? `title="${escapeHtml(title)}"` : ""}>
+        <span class="mc-icon">${icon}</span>
+        <span class="mc-v">${v}</span><span class="mc-k">${k}</span></div>`;
+
+    els.missionControl.innerHTML =
+      `<div class="mc-tile mc-regime" title="${escapeHtml(regime.detail)}">${regimeChipHtml(regime)}</div>` +
+      tile("📊", "breadth in uptrend", Number.isFinite(breadth) ? `${(breadth * 100).toFixed(0)}%` : "—", Number.isFinite(breadth) && breadth >= 0.5 ? "good" : "meh", "Share of scanned names passing the trend gate — the market's participation under the hood") +
+      tile("🎯", "setups ready", results.length ? `${ready.length}${ready.length ? ` · ${ready.slice(0, 2).map((r) => r.ticker).join(" ")}` : ""}` : "—", ready.length ? "good" : "", "Names with an actionable BUY verdict right now") +
+      tile("📌", "positions need action", open.length ? `${needsAction.length}/${open.length}` : "0", needsAction.length ? "hot" : "", needsAction.length ? needsAction.map((p) => p.symbol).join(", ") : "All open positions are holds") +
+      tile("🔥", "portfolio heat", `${(heat * 100).toFixed(1)}%`, heat > 0.06 ? "hot" : heat > 0.04 ? "meh" : "good", "Total account % at risk if every open stop hits — cap 6%") +
+      tile("⚖", "expectancy", stats.closed ? fmtR(stats.expectancyR) : "—", stats.closed && stats.expectancyR > 0 ? "good" : stats.closed ? "hot" : "", "Average realized R per closed trade — the edge, measured");
+  }
+
+  /** Download the whole journal as CSV. */
+  function exportJournalCsv(): void {
+    const positions = loadPositions();
+    if (positions.length === 0) return;
+    const header = ["Symbol", "Side", "Opened", "Status", "Entry", "Stop", "T1", "T2", "Shares", "Exit", "R", "Outcome"];
+    const body = positions.map((p) => {
+      const r = realizedR(p);
+      return [
+        p.symbol, sideOf(p), new Date(p.openedAt).toISOString().slice(0, 10), p.status,
+        p.entry, p.stop, p.t1, p.t2, p.shares,
+        p.exitPrice ?? "", r !== null && Number.isFinite(r) ? r.toFixed(2) : "",
+        p.status === "closed" ? (r !== null && r > 0.05 ? "win" : r !== null && r < -0.05 ? "loss" : "scratch") : "",
+      ];
+    });
+    const csv = [header, ...body].map((row) => row.map(csvCell).join(",")).join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "volumeshelfs-journal.csv";
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   // One delegated listener for close/remove clicks across every re-render.
@@ -932,6 +1062,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
       renderPositions();
     }
   });
+  els.posExport.addEventListener("click", exportJournalCsv);
   renderPositions(); // restore the journal from a previous session
 
   // ---- detail ------------------------------------------------------------
