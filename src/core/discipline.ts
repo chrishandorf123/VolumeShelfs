@@ -1,6 +1,7 @@
 import type { Position } from "./journal";
 import { journalStats, realizedR } from "./journal";
 import type { MarketRegime } from "./regime";
+import type { AnomalyReport } from "./anomaly";
 
 /**
  * The discipline guard: the account-survival rules that professional risk
@@ -42,6 +43,8 @@ export interface DisciplineInput {
   rMultipleT1: number | null;
   positions: Position[];
   regime: MarketRegime;
+  /** Tape character from the manipulation scan (omit when unavailable). */
+  tape?: Pick<AnomalyReport, "level" | "character">;
 }
 
 const check = (id: string, label: string, level: DisciplineCheck["level"], message: string): DisciplineCheck => ({
@@ -169,7 +172,26 @@ export function checkDiscipline(input: DisciplineInput): DisciplineReport {
     checks.push(check("dd", "Drawdown", "pass", dd > 0 ? `${dd.toFixed(1)}R off the peak — within normal give-back.` : "Equity curve at its peak."));
   }
 
-  // 8. The trade itself must pay: first target ≥ 1R.
+  // 8. Tape quality: predatory manipulation blocks; smart-money games CAN be
+  //    a tell in your favor — when they point the same way as your trade.
+  if (input.tape) {
+    const { level, character } = input.tape;
+    const gamesFavor = (side === "long" && character === "games-accumulation") || (side === "short" && character === "games-distribution");
+    const gamesAgainst = (side === "long" && character === "games-distribution") || (side === "short" && character === "games-accumulation");
+    if (character === "predatory" || (level === "SKETCHY" && !gamesFavor)) {
+      checks.push(check("tape", "Tape quality", "fail", "Predatory tape (pump / thin mark-ups / traps) — levels are unreliable; someone needs your fill to exit."));
+    } else if (gamesAgainst) {
+      checks.push(check("tape", "Tape quality", "warn", `Smart-money games point AGAINST this ${side} — you'd be the exit liquidity.`));
+    } else if (gamesFavor) {
+      checks.push(check("tape", "Tape quality", "pass", `Games detected in your favor — stops swept/supply ${side === "long" ? "absorbed" : "distributed"} by bigger hands.`));
+    } else if (level === "WATCH") {
+      checks.push(check("tape", "Tape quality", "warn", "Tape oddities — trust the levels less and size down."));
+    } else {
+      checks.push(check("tape", "Tape quality", "pass", "Tape is clean — moves carry volume and gaps behave."));
+    }
+  }
+
+  // 9. The trade itself must pay: first target ≥ 1R.
   if (input.rMultipleT1 !== null && Number.isFinite(input.rMultipleT1)) {
     if (input.rMultipleT1 >= 1.5) checks.push(check("rr", "Reward : risk", "pass", `${input.rMultipleT1.toFixed(1)}R to the first target.`));
     else if (input.rMultipleT1 >= 1.0) checks.push(check("rr", "Reward : risk", "warn", `${input.rMultipleT1.toFixed(1)}R to T1 — thin; you need a high win rate to make this pay.`));
@@ -179,7 +201,7 @@ export function checkDiscipline(input: DisciplineInput): DisciplineReport {
   const anyFail = checks.some((c) => c.level === "fail");
   const warns = checks.filter((c) => c.level === "warn").length;
   const verdict: DisciplineVerdict = anyFail ? "blocked" : warns > 0 ? "caution" : "go";
-  const halve = checks.some((c) => (c.id === "streak" || c.id === "dd" || c.id === "regime") && c.level === "warn");
+  const halve = checks.some((c) => ["streak", "dd", "regime", "tape"].includes(c.id) && c.level === "warn");
   const sizeFactor = anyFail ? 0 : halve ? 0.5 : 1;
   return { verdict, checks, sizeFactor };
 }

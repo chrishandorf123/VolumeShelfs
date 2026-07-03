@@ -17,8 +17,10 @@ import {
   detectSwings,
   DEFAULT_BACKTEST_CONFIG,
   buildTables,
+  anomalyScan,
   decide,
   earlySignal,
+  institutionalRead,
   nextSteps,
   recommend,
   recoContextFromScan,
@@ -43,6 +45,7 @@ import { recoPanelHtml } from "./reco-view";
 import { shannonPanelHtml } from "./shannon-view";
 import { disciplinePanelHtml, finalCallPanelHtml } from "./decision-view";
 import { earlyPanelHtml } from "./early-view";
+import { anomalyPanelHtml, institutionalPanelHtml } from "./tape-view";
 import { celebrate } from "./celebrate";
 import { loadPositions } from "./journal-store";
 import { confirmationPanelHtml, confluencePanelHtml, thesisPanelHtml } from "./thesis-view";
@@ -488,6 +491,7 @@ function renderExploreReco(r: ScanResult | null): void {
     detail: "Regime is read from the benchmark in the Scanner — run a scan there for the market light.",
   };
   const symbol = els.symbol.value.trim().toUpperCase() || r.ticker;
+  const tape = state.candles.length ? anomalyScan(state.candles) : null;
   const disc = checkDiscipline({
     accountSize: Number(localStorage.getItem("vs.acct")) || 10000,
     tradeRiskFrac: (Number(localStorage.getItem("vs.riskpref")) || 1) / 100,
@@ -496,6 +500,7 @@ function renderExploreReco(r: ScanResult | null): void {
     rMultipleT1: activePlan?.rMultipleT1 ?? null,
     positions: loadPositions(),
     regime,
+    tape: tape ? { level: tape.level, character: tape.character } : undefined,
   });
   const fc = finalCall({
     side,
@@ -512,6 +517,8 @@ function renderExploreReco(r: ScanResult | null): void {
     finalCallPanelHtml(fc) +
     recoPanelHtml(reco) +
     coachPanelHtml(nextSteps(reco, plan, r.price)) +
+    anomalyPanelHtml(tape) +
+    (state.candles.length ? institutionalPanelHtml(institutionalRead(state.candles)) : "") +
     (state.candles.length ? earlyPanelHtml(earlySignal(state.candles)) : "") +
     disciplinePanelHtml(disc) +
     (shan ? shannonPanelHtml(shan, r.price) : "") +

@@ -6,11 +6,13 @@ import {
   buildTradePlan,
   defaultAnchorHighIndex,
   defaultAnchorIndex,
+  anomalyScan,
   buildShortPlan,
   checkDiscipline,
   closePosition,
   detectGaps,
   earlySignal,
+  institutionalRead,
   finalCall,
   journalStats,
   markToMarket,
@@ -30,8 +32,10 @@ import {
   shannonRead,
   smaSeries,
   sortMonitorRows,
+  type AnomalyReport,
   type ChosenAnchor,
   type EarlySignal,
+  type InstitutionalRead,
   type JournalStats,
   type MarketRegime,
   type MonitorRow,
@@ -58,6 +62,7 @@ import { shannonPanelHtml } from "./shannon-view";
 import { wireTrackButton } from "./trade-view";
 import { disciplinePanelHtml, finalCallPanelHtml, regimeChipHtml } from "./decision-view";
 import { earlyPanelHtml, earlyPillHtml } from "./early-view";
+import { anomalyPanelHtml, institutionalPanelHtml, instPillHtml, tapeIconHtml } from "./tape-view";
 import { celebrate } from "./celebrate";
 import { confirmationPanelHtml, confluencePanelHtml, thesisPanelHtml } from "./thesis-view";
 import { tradePlanPanelHtml, wirePositionSizer } from "./trade-view";
@@ -185,14 +190,31 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
   // Reco + plan are needed by the table, digest, CSV export and monitor; compute
   // each ticker's once per ranking pass instead of once per consumer.
   let recoCache = new Map<string, { reco: Recommendation; plan: TradePlan | null }>();
-  /** Early-signal cache, same lifecycle as recoCache. */
+  /** Early-signal / institutional / tape caches, same lifecycle as recoCache. */
   let earlyCache = new Map<string, EarlySignal | null>();
+  let instCache = new Map<string, InstitutionalRead | null>();
+  let tapeCache = new Map<string, AnomalyReport | null>();
+  const candlesOf = (ticker: string) => lastInputs.find((i) => i.ticker === ticker)?.candles ?? [];
   function earlyOf(ticker: string): EarlySignal | null {
     if (!earlyCache.has(ticker)) {
-      const candles = lastInputs.find((i) => i.ticker === ticker)?.candles ?? [];
+      const candles = candlesOf(ticker);
       earlyCache.set(ticker, candles.length ? earlySignal(candles) : null);
     }
     return earlyCache.get(ticker) ?? null;
+  }
+  function instOf(ticker: string): InstitutionalRead | null {
+    if (!instCache.has(ticker)) {
+      const candles = candlesOf(ticker);
+      instCache.set(ticker, candles.length ? institutionalRead(candles) : null);
+    }
+    return instCache.get(ticker) ?? null;
+  }
+  function tapeOf(ticker: string): AnomalyReport | null {
+    if (!tapeCache.has(ticker)) {
+      const candles = candlesOf(ticker);
+      tapeCache.set(ticker, candles.length ? anomalyScan(candles) : null);
+    }
+    return tapeCache.get(ticker) ?? null;
   }
   function recoOf(r: ScanResult): { reco: Recommendation; plan: TradePlan | null } {
     let c = recoCache.get(r.ticker);
@@ -467,6 +489,8 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     results = scanUniverse(lastInputs, lastBenchmark, config);
     recoCache = new Map(); // results changed — recompute recos lazily
     earlyCache = new Map();
+    instCache = new Map();
+    tapeCache = new Map();
     regime = marketRegime(lastBenchmark);
     els.regimeWrap.innerHTML = regimeChipHtml(regime);
     renderTable();
@@ -585,10 +609,11 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
               : "<span class='muted'>—</span>";
         return `<tr data-ticker="${r.ticker}" class="${r.ticker === selected ? "sel" : ""}">
           <td class="muted">${i + 1}</td>
-          <td class="tk">${r.ticker}${r.passedAll ? ' <span class="apex-badge">A+</span>' : ""}<div class="reco-chip reco-${reco.verdict}" title="${escapeHtml(reco.headline)}">${reco.label}</div></td>
+          <td class="tk">${r.ticker}${tapeIconHtml(tapeOf(r.ticker))}${r.passedAll ? ' <span class="apex-badge">A+</span>' : ""}<div class="reco-chip reco-${reco.verdict}" title="${escapeHtml(reco.headline)}">${reco.label}</div></td>
           <td><div class="scorebar"><span style="width:${r.score.toFixed(0)}%"></span></div><b>${r.score.toFixed(0)}</b></td>
           <td><span class="cf-pill grade-${r.confluence.grade.replace("+", "plus")}" title="${r.confluence.passed}/10 confirmations${r.confluence.reversionIntoStrength ? " · reversion-into-strength" : r.confluence.chasing ? " · extended (chasing)" : ""}">${r.confluence.grade}<small>${r.confluence.passed}</small></span></td>
           <td>${earlyPillHtml(earlyOf(r.ticker))}</td>
+          <td>${instPillHtml(instOf(r.ticker))}</td>
           <td class="gates-cell">${gates}</td>
           <td>${formatPrice(r.price)}</td>
           <td class="${r.rs.excess3mo >= 0 ? "pos" : "neg"}">${fmtPct(r.rs.excess3mo)}</td>
@@ -1155,6 +1180,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     // THE decision: setup + stage + timeframes + confluence + discipline guard.
     const acct = Number(localStorage.getItem("vs.acct")) || 10000;
     const riskFrac = (Number(localStorage.getItem("vs.riskpref")) || 1) / 100;
+    const tape = tapeOf(r.ticker);
     const disc = checkDiscipline({
       accountSize: acct,
       tradeRiskFrac: riskFrac,
@@ -1163,6 +1189,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
       rMultipleT1: activePlan?.rMultipleT1 ?? null,
       positions: loadPositions(),
       regime,
+      tape: tape ? { level: tape.level, character: tape.character } : undefined,
     });
     const fc = finalCall({
       side,
@@ -1179,6 +1206,8 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
       finalCallPanelHtml(fc) +
       recoPanelHtml(reco) +
       coachPanelHtml(nextSteps(reco, plan, r.price)) +
+      anomalyPanelHtml(tape) +
+      institutionalPanelHtml(instOf(r.ticker)) +
       earlyPanelHtml(earlyOf(r.ticker)) +
       disciplinePanelHtml(disc) +
       confluencePanelHtml(r.confluence) +

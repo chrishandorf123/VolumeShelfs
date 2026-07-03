@@ -75,6 +75,33 @@ describe("checkDiscipline", () => {
   });
 });
 
+describe("tape-quality check (manipulation, both kinds)", () => {
+  it("blocks predatory tape outright", () => {
+    const rep = checkDiscipline(base({ tape: { level: "SKETCHY", character: "predatory" } }));
+    expect(rep.checks.find((c) => c.id === "tape")?.level).toBe("fail");
+    expect(rep.verdict).toBe("blocked");
+  });
+
+  it("treats accumulative games as a tell FOR a long, and against a short", () => {
+    const long = checkDiscipline(base({ tape: { level: "WATCH", character: "games-accumulation" } }));
+    expect(long.checks.find((c) => c.id === "tape")?.level).toBe("pass");
+    const short = checkDiscipline(base({ side: "short", regime: RED, tape: { level: "WATCH", character: "games-accumulation" } }));
+    expect(short.checks.find((c) => c.id === "tape")?.level).toBe("warn");
+  });
+
+  it("distribution games favor shorts and warn longs into half size", () => {
+    const short = checkDiscipline(base({ side: "short", regime: RED, tape: { level: "WATCH", character: "games-distribution" } }));
+    expect(short.checks.find((c) => c.id === "tape")?.level).toBe("pass");
+    const long = checkDiscipline(base({ tape: { level: "WATCH", character: "games-distribution" } }));
+    expect(long.checks.find((c) => c.id === "tape")?.level).toBe("warn");
+    expect(long.sizeFactor).toBe(0.5);
+  });
+
+  it("skips the check entirely when no tape read is available", () => {
+    expect(checkDiscipline(base()).checks.some((c) => c.id === "tape")).toBe(false);
+  });
+});
+
 describe("streak + drawdown helpers", () => {
   it("counts only the current tail of losses", () => {
     const ps = [win("A", T0), loss("B", T0 + 10), loss("C", T0 + 20)];

@@ -2416,3 +2416,41 @@ button.ghost:hover {
 @media (prefers-reduced-motion: reduce) {
   .early-loading, .topbar::after { animation: none; }
 }
+
+/* ---- institutional footprint + tape check ---- */
+.inst-pill {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  font-weight: 900;
+  font-size: 12.5px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  cursor: help;
+  font-variant-numeric: tabular-nums;
+}
+.inst-pill small { font-size: 9px; font-weight: 700; color: var(--muted); }
+.inst-A { color: var(--up); border-color: rgba(38, 166, 154, 0.65); background: rgba(38, 166, 154, 0.12); box-shadow: 0 0 8px rgba(38, 166, 154, 0.3); }
+.inst-B { color: var(--up); border-color: rgba(38, 166, 154, 0.4); }
+.inst-C { color: var(--muted); }
+.inst-D { color: var(--down); border-color: rgba(239, 83, 80, 0.4); }
+.inst-E { color: var(--down); border-color: rgba(239, 83, 80, 0.65); background: rgba(239, 83, 80, 0.12); }
+.tape-icon { cursor: help; font-size: 12px; }
+.tape-icon.bad { filter: drop-shadow(0 0 4px rgba(239, 83, 80, 0.8)); }
+.tape-icon.games { filter: drop-shadow(0 0 4px rgba(200, 121, 239, 0.8)); }
+.tape-icon.dist { filter: grayscale(0.4) drop-shadow(0 0 4px rgba(239, 83, 80, 0.6)); }
+.tape-chip {
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 5px;
+  letter-spacing: 0.4px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.tape-chip.ok { background: rgba(38, 166, 154, 0.14); color: var(--up); }
+.tape-chip.warn { background: rgba(245, 200, 66, 0.14); color: #f5c842; }
+.tape-chip.bad { background: rgba(239, 83, 80, 0.16); color: var(--down); box-shadow: 0 0 10px rgba(239, 83, 80, 0.35); }
+.tape-chip.games { background: rgba(200, 121, 239, 0.16); color: #c879ef; box-shadow: 0 0 10px rgba(200, 121, 239, 0.35); }
+.tape-chip.dist { background: rgba(239, 83, 80, 0.12); color: #ef9a97; }

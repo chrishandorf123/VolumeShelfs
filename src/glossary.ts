@@ -263,6 +263,22 @@ export const GLOSSARY: GlossaryEntry[] = [
       "Most traders' trigger is the breakout — by the time it prints, entries are crowded and the stop is far away. What tends to precede real breakouts is measurable: volume drying up (sellers exhausted), the range squeezing (a coiling spring), OBV climbing while price goes nowhere (someone accumulating without moving the tape), swing lows stepping up into a flat ceiling, and a pocket pivot (one up-day whose volume beats every down-day of the prior two weeks). The Early score weighs those tells while price is still UNDER the lid — early means before the trigger, not after it.",
     why: "It gets you stalking the name with alerts set before the obvious signal fires — better entry, tighter stop, and you're selling into the crowd's excitement instead of buying it. It's a heads-up, not a buy signal: the Final Call still decides.",
   },
+  {
+    id: "institutional",
+    term: "Institutional footprint (A–E)",
+    short: "Funds can't buy quietly — heavy-volume days show who's accumulating or distributing.",
+    plain:
+      "Institutions move size, and size leaves marks: the app counts heavy-volume up-closes vs down-closes (accumulation/distribution days), compares total volume on up days vs down days, checks where the close lands within the range on the heaviest days (who won the day when it mattered), counts outsized-volume initiation days, and reads the OBV trend. The result is an A–E rating: A/B = accumulating, C = neutral, D/E = distributing.",
+    why: "Riding institutional accumulation is the whole game for a retail trader — they take weeks to build positions, which is exactly the window you can join. A 'D/E' name may look fine on price alone while size quietly leaves.",
+  },
+  {
+    id: "manipulation",
+    term: "Tape check: predatory vs games",
+    short: "Manipulation comes in two kinds — one to flee, one that's actually a bullish tell.",
+    plain:
+      "PREDATORY tape is the kind run against you: pump-shaped parabolas on exploding volume, prices marked up on no participation, repeated gap-and-reverse traps, thin names moving violently. Levels are unreliable there and the guard blocks the trade. SMART-MONEY GAMES are different: a stop-sweep below support that immediately reclaims (a Wyckoff spring) or huge volume absorbed at the lows without a breakdown means a big player is clearing the book BEFORE marking price up — 'manipulation' that points the way. The mirror (a failed poke above resistance, churn at the highs) is distribution.",
+    why: "Knowing the difference is the edge: predatory tape wants your fill so someone can exit; accumulative games precede markups. Same-looking chaos, opposite trades.",
+  },
 ];
 
 const BY_ID = new Map(GLOSSARY.map((e) => [e.id, e]));
