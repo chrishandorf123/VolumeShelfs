@@ -74,6 +74,7 @@ const els = {
   csvBtn: $<HTMLButtonElement>("csvBtn"),
   csvInput: $<HTMLInputElement>("csvInput"),
   anchorMode: $<HTMLSelectElement>("anchorMode"),
+  profileRange: $<HTMLSelectElement>("profileRange"),
   rows: $<HTMLInputElement>("rows"),
   rowsVal: $("rowsVal"),
   scale: $<HTMLSelectElement>("scale"),
@@ -109,6 +110,9 @@ interface State {
   anchorMode: AnchorMode;
   options: AnalysisOptions;
   source: string;
+  /** "anchored" = volume from the anchor forward (the trade read).
+   *  "full" = the whole loaded history — shows shelves at old highs/lows. */
+  profileRange: "anchored" | "full";
 }
 
 const state: State = {
@@ -117,6 +121,7 @@ const state: State = {
   anchorMode: "auto-low",
   options: { ...DEFAULT_OPTIONS },
   source: "",
+  profileRange: "anchored",
 };
 
 // ---- chart -----------------------------------------------------------------
@@ -209,7 +214,11 @@ function recompute(): void {
   const anchor = Math.min(Math.max(state.anchorIndex, 0), c.length - 1);
   const currentPrice = c[c.length - 1].close;
 
-  const profile = computeAnchoredProfile(c, anchor, {
+  // Full-history mode anchors the PROFILE at bar 0 so shelves at old highs and
+  // lows (where price traded years ago) stay on the map — "what's coming" if
+  // price travels. The trade logic (scan/AVWAP/plan) stays on the chosen anchor.
+  const fullRange = state.profileRange === "full";
+  const profile = computeAnchoredProfile(c, fullRange ? 0 : anchor, {
     rowCount: state.options.rowCount,
     scale: state.options.scale,
     valueAreaFraction: state.options.valueAreaFraction,
@@ -251,6 +260,7 @@ function recompute(): void {
         ]
       : undefined,
     overlays: scan ? buildExploreOverlays(c, anchor, scan) : undefined,
+    fitProfileRange: fullRange,
   };
   chart.setModel(model);
   renderSidebar(model);
@@ -306,8 +316,11 @@ function renderSidebar(model: ChartModel | null): void {
     els.gaps.innerHTML = "";
     return;
   }
-  const { profile, analysis, currentPrice, candles, anchorIndex } = model;
-  const anchorDate = new Date(candles[anchorIndex].time * 1000).toISOString().slice(0, 10);
+  const { profile, analysis, currentPrice, candles } = model;
+  // These stats describe the PROFILE, so date them from the profile's own
+  // anchor — bar 0 in full-history mode, the trade anchor otherwise.
+  const profDate = new Date(candles[profile.anchorIndex].time * 1000).toISOString().slice(0, 10);
+  const rangeLabel = model.fitProfileRange ? `Full history (since ${profDate})` : profDate;
 
   const stat = (k: string, v: string) =>
     `<div class="stat"><span class="k">${k}</span><span class="v">${v}</span></div>`;
@@ -316,16 +329,22 @@ function renderSidebar(model: ChartModel | null): void {
     stat("POC", formatPrice(profile.poc.mid)),
     stat("Value area", `${formatPrice(profile.valueArea.low)}–${formatPrice(profile.valueArea.high)}`),
     stat("Total volume", formatVolume(profile.totalVolume)),
-    stat("Anchored from", anchorDate),
+    stat("Profile covers", rangeLabel),
     stat("Shelves / gaps", `${analysis.shelves.length} / ${analysis.gaps.length}`),
   ].join("");
 
   // Zones: nearest demand & supply highlighted at top, then all shelves sorted by price desc.
   const shelves = [...analysis.shelves].sort((a, b) => b.priceHigh - a.priceHigh);
+  // In full-history mode the zones map ALL past volume while the verdict/
+  // thesis/plan panels read the anchored profile — say so, don't let the two
+  // silently disagree.
+  const fullNote = model.fitProfileRange
+    ? `<p class="fc-note muted">Full-history map: every shelf price ever built, above and below. The verdict/thesis/plan panels still read the anchored profile (the trade).</p>`
+    : "";
   if (shelves.length === 0) {
-    els.zones.innerHTML = `<div class="empty">No significant shelves at this threshold.</div>`;
+    els.zones.innerHTML = `${fullNote}<div class="empty">No significant shelves at this threshold.</div>`;
   } else {
-    els.zones.innerHTML = shelves
+    els.zones.innerHTML = fullNote + shelves
       .map((s) => {
         const cls =
           s.zone === "break-even-demand" ? "demand" : s.zone === "break-even-supply" ? "supply" : "neutral";
@@ -728,6 +747,13 @@ function initControls(): void {
 
   els.anchorMode.addEventListener("change", () => {
     state.anchorMode = els.anchorMode.value as AnchorMode;
+    recompute();
+  });
+  els.profileRange.value = localStorage.getItem("vs.profileRange") ?? "anchored";
+  state.profileRange = els.profileRange.value === "full" ? "full" : "anchored";
+  els.profileRange.addEventListener("change", () => {
+    state.profileRange = els.profileRange.value === "full" ? "full" : "anchored";
+    localStorage.setItem("vs.profileRange", state.profileRange);
     recompute();
   });
   els.rows.addEventListener("input", () => {

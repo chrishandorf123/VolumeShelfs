@@ -55,6 +55,9 @@ export interface ChartModel {
   overlays?: ChartOverlays;
   /** Suggested anchor pivots (swing low/high) the coach marks. */
   suggestions?: AnchorMarker[];
+  /** Stretch the price axis to the WHOLE profile (full-history mode) so
+   *  shelves far above/below the visible candles stay on screen. */
+  fitProfileRange?: boolean;
 }
 
 const MARGIN = { top: 14, right: 64, bottom: 24, left: 8 };
@@ -82,6 +85,8 @@ export class VolumeShelfsChart {
   private view: { start: number; end: number } | null = null;
   /** Resolved visible range for the current render (set in layout). */
   private visible = { start: 0, end: 0 };
+  /** True after a wheel zoom — full-range fitting yields to the user's zoom. */
+  private userZoomed = false;
   private lastCount = -1;
   private drag: { x: number; startView: { start: number; end: number }; moved: boolean } | null = null;
 
@@ -139,6 +144,7 @@ export class VolumeShelfsChart {
       const c = Math.min(Math.max(count, 10), n);
       this.view = { start: n - c, end: n - 1 };
     }
+    this.userZoomed = false; // timeframe buttons restore full-map fitting
     this.render();
   }
 
@@ -214,6 +220,18 @@ export class VolumeShelfsChart {
       }
       include(az.nearestSupply?.priceHigh);
       include(az.nearestDemand?.priceLow);
+    }
+    // Full-history mode: the whole profile IS the map — no caps. Shelves where
+    // price traded at 25 must stay visible even when today's candles sit at 13.
+    // Skipped while the user is wheel-zoomed (zoom must still rescale price)
+    // and when none of the profile geometry is toggled visible.
+    const bins = this.model?.profile?.bins;
+    const showAny = this.model ? this.model.show.profile || this.model.show.shelves || this.model.show.gaps : false;
+    if (this.model?.fitProfileRange && !this.userZoomed && showAny && bins && bins.length > 0) {
+      // A single bad low<=0 bar must not silently flip a log axis to linear.
+      const extLow = this.model.profile?.scale === "log" ? Math.max(bins[0].low, 1e-6) : bins[0].low;
+      low = Math.min(low, extLow);
+      high = Math.max(high, bins[bins.length - 1].high);
     }
     const pad = (high - low) * 0.04 || 1;
     const scale = this.model?.profile?.scale ?? "log";
@@ -751,6 +769,7 @@ export class VolumeShelfsChart {
 
   private handleDblClick = (): void => {
     this.view = null; // reset zoom to fit-all
+    this.userZoomed = false;
     this.render();
   };
 
@@ -768,6 +787,7 @@ export class VolumeShelfsChart {
     const newCount = Math.min(n, Math.max(minCount, Math.round(count * factor)));
     if (newCount >= n) {
       this.view = null; // fully zoomed out
+      this.userZoomed = false;
       this.render();
       return;
     }
@@ -775,6 +795,7 @@ export class VolumeShelfsChart {
     let newStart = Math.round(cursorIdx - frac * (newCount - 1));
     newStart = Math.min(Math.max(newStart, 0), n - newCount);
     this.view = { start: newStart, end: newStart + newCount - 1 };
+    this.userZoomed = true; // let the zoom actually rescale price in full mode
     this.render();
   };
 }
