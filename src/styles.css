@@ -2789,3 +2789,16 @@ button.ghost:hover {
   .chat-fab { transition: none; }
   .chat-typing { animation: none; }
 }
+
+/* ---- live-monitor sortable headers ---- */
+table.mon-table thead th.mon-sort {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+table.mon-table thead th.mon-sort:hover {
+  color: var(--text);
+}
+table.mon-table thead th.mon-sort.on {
+  color: #5b8def;
+}

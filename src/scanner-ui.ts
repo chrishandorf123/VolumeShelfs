@@ -22,6 +22,8 @@ import {
   marketRegime,
   monitorRow,
   nextSteps,
+  sortMonitorRowsBy,
+  type MonitorSortKey,
   pickTop,
   positionAdvice,
   projectGrowth,
@@ -449,6 +451,23 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     if (del) {
       saveAlerts(loadAlerts().filter((a) => a.id !== del.dataset.alertDel));
       del.closest(".al-chip")?.remove();
+      return;
+    }
+    // Header click: cycle the column sort and re-render from the saved pass.
+    const head = (e.target as HTMLElement).closest<HTMLElement>("th[data-mon-sort]");
+    if (head) {
+      const key = head.dataset.monSort as MonitorSortKey;
+      const first = monitorFirstDir(key);
+      monitorSort =
+        monitorSort?.key !== key
+          ? { key, dir: first }
+          : monitorSort.dir === first
+            ? { key, dir: (-first as 1 | -1) }
+            : null;
+      if (lastMonitorPass) {
+        const { rows, failures, total, planned } = lastMonitorPass;
+        renderMonitor(rows, failures, total, planned);
+      }
       return;
     }
     const tr = (e.target as HTMLElement).closest<HTMLTableRowElement>("tr[data-ticker]");
@@ -1034,7 +1053,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
       }
       // Render once per pass (progress lives in the meta line above) — a
       // per-quote rebuild is O(n²) DOM work for no extra information.
-      renderMonitor(sortMonitorRows(rows), failures, targets.length, planned);
+      renderMonitor(rows, failures, targets.length, planned);
       renderPositions(); // open positions just got fresh marks
       const triggered = rows.filter((r) => r.status === "TRIGGERED" || r.status === "APPROACHING").length;
       setStatus(
@@ -1053,7 +1072,22 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     }
   }
 
+  /** User-chosen monitor sort (null = the default most-actionable order). */
+  let monitorSort: { key: MonitorSortKey; dir: 1 | -1 } | null = null;
+  /** The last monitor pass, kept so header clicks re-sort without re-fetching. */
+  let lastMonitorPass: {
+    rows: MonitorRow[];
+    failures: Array<{ symbol: string; message: string }>;
+    total: number;
+    planned: number;
+    checkedAt: Date;
+  } | null = null;
+
   function renderMonitor(rows: MonitorRow[], failures: Array<{ symbol: string; message: string }>, total: number, planned = total): void {
+    // Keep the raw pass so a header click can re-sort without a new fetch —
+    // and keep the original check time, so re-sorting doesn't fake freshness.
+    const checkedAt = lastMonitorPass?.rows === rows ? lastMonitorPass.checkedAt : new Date();
+    lastMonitorPass = { rows, failures, total, planned, checkedAt };
     // Freshness comes from the single most-recent row, so the live/close label
     // and the timestamp can't be mixed from two different symbols.
     const stampOf = (r: MonitorRow) => r.asOf || r.day || "";
@@ -1065,7 +1099,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
       ? ` · ${newest.live ? "live" : "close"} ${stampOf(newest)}`
       : "";
     // Local wall-clock so the user can tell "old data" from "old check".
-    const checked = ` · checked ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+    const checked = ` · checked ${checkedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
     const skipped = failures.length
       ? ` · ${failures.length} skipped: ${failures.slice(0, 3).map((f) => f.symbol).join(", ")}${failures.length > 3 ? "…" : ""}`
       : "";
@@ -1094,7 +1128,9 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     // minutes (halted / thin names) — dim it and show its own time.
     const liveTimes = rows.filter((r) => r.live && r.asOf).map((r) => Date.parse(r.asOf!));
     const newestLive = liveTimes.length ? Math.max(...liveTimes) : NaN;
-    const body = rows
+    // Default order = most actionable first; a header click overrides it.
+    const display = monitorSort ? sortMonitorRowsBy(rows, monitorSort.key, monitorSort.dir) : sortMonitorRows(rows);
+    const body = display
       .map((r) => {
         const cls = r.status.toLowerCase();
         const chg = r.changePct >= 0 ? "pos" : "neg";
@@ -1129,12 +1165,26 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
           )
           .join("")}</div>`
       : "";
+    // Sortable headers: click cycles one way → the other way → default order.
+    const th = (key: MonitorSortKey, label: string, title: string) => {
+      const active = monitorSort?.key === key;
+      const arrow = active ? (monitorSort!.dir === 1 ? " ▲" : " ▼") : "";
+      const hint = active
+        ? monitorSort!.dir === monitorFirstDir(key)
+          ? "click to reverse"
+          : "click to restore the default order"
+        : "click to sort";
+      return `<th class="mon-sort${active ? " on" : ""}" data-mon-sort="${key}" title="${title} · ${hint}">${label}${arrow}</th>`;
+    };
     els.monitorBody.innerHTML = `${alertsRow}${feed}<table class="mon-table">
       <thead><tr>
-        <th>Status</th><th>Ticker</th><th>Price</th><th>Today</th>
-        <th title="Distance to the entry trigger (% of price, and in R — units of the plan's risk)">→Entry</th>
-        <th title="Distance to the stop (invalidation)">→Stop</th>
-        <th title="Distance to the first target">→T1</th>
+        ${th("status", "Status", "Most actionable first (TRIGGERED → STOPPED)")}
+        ${th("symbol", "Ticker", "Alphabetical")}
+        ${th("price", "Price", "Latest quoted price")}
+        ${th("changePct", "Today", "Today's % move")}
+        ${th("toEntry", "→Entry", "Distance to the entry trigger (% of price, and in R — units of the plan's risk)")}
+        ${th("toStop", "→Stop", "Distance to the stop (invalidation)")}
+        ${th("toT1", "→T1", "Distance to the first target")}
         <th>Read</th>
       </tr></thead><tbody>${body}</tbody></table>`;
     // Row clicks use one delegated listener (wired at init) — no per-render churn.
@@ -1821,6 +1871,11 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
 
 function round(v: number): number {
   return Math.round(v * 100) / 100;
+}
+/** First click on a monitor header: numbers show highest first; status and
+ * ticker read top-down naturally (most actionable / A→Z). */
+function monitorFirstDir(key: MonitorSortKey): 1 | -1 {
+  return key === "status" || key === "symbol" ? 1 : -1;
 }
 function fmtPct(v: number): string {
   return Number.isFinite(v) ? `${v >= 0 ? "+" : ""}${(v * 100).toFixed(1)}%` : "—";

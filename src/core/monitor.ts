@@ -114,3 +114,22 @@ export function sortMonitorRows(rows: MonitorRow[]): MonitorRow[] {
     return Math.abs(a.toEntry) - Math.abs(b.toEntry);
   });
 }
+
+/** Columns the live monitor can be re-sorted by (clicking a header). */
+export type MonitorSortKey = "status" | "symbol" | "price" | "changePct" | "toEntry" | "toStop" | "toT1";
+
+/**
+ * Sort by one column. dir = 1 ascending (lowest first), −1 descending.
+ * Rows whose value is unknown (NaN) always sink to the bottom, either way —
+ * "sort by →T1" should surface real distances, not plans without a T1 read.
+ */
+export function sortMonitorRowsBy(rows: MonitorRow[], key: MonitorSortKey, dir: 1 | -1): MonitorRow[] {
+  return [...rows].sort((a, b) => {
+    if (key === "symbol") return dir * a.symbol.localeCompare(b.symbol);
+    const va = key === "status" ? STATUS_RANK[a.status] : a[key];
+    const vb = key === "status" ? STATUS_RANK[b.status] : b[key];
+    if (!Number.isFinite(va)) return Number.isFinite(vb) ? 1 : 0;
+    if (!Number.isFinite(vb)) return -1;
+    return dir * (va - vb);
+  });
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { monitorRow, sortMonitorRows, type MonitorRow } from "./monitor";
+import { monitorRow, sortMonitorRows, sortMonitorRowsBy, type MonitorRow } from "./monitor";
 import type { TradePlan } from "./tradePlan";
 import type { Quote } from "../data/types";
 
@@ -91,5 +91,49 @@ describe("sortMonitorRows", () => {
     const before = rows.map((r) => r.status);
     sortMonitorRows(rows);
     expect(rows.map((r) => r.status)).toEqual(before);
+  });
+});
+
+describe("sortMonitorRowsBy (clickable columns)", () => {
+  const named = (symbol: string, price: number, changePct = 0): MonitorRow =>
+    monitorRow({ symbol, price, prevClose: price / (1 + changePct), changePct }, plan());
+
+  it("sorts a numeric column descending (highest first) and ascending", () => {
+    const rows = [named("A", 96, 0.01), named("B", 105, -0.02), named("C", 99, 0.03)];
+    expect(sortMonitorRowsBy(rows, "changePct", -1).map((r) => r.symbol)).toEqual(["C", "A", "B"]);
+    expect(sortMonitorRowsBy(rows, "changePct", 1).map((r) => r.symbol)).toEqual(["B", "A", "C"]);
+    expect(sortMonitorRowsBy(rows, "price", -1).map((r) => r.symbol)).toEqual(["B", "C", "A"]);
+  });
+
+  it("sorts by ticker alphabetically both ways", () => {
+    const rows = [named("MSFT", 96), named("AAPL", 97), named("NVDA", 98)];
+    expect(sortMonitorRowsBy(rows, "symbol", 1).map((r) => r.symbol)).toEqual(["AAPL", "MSFT", "NVDA"]);
+    expect(sortMonitorRowsBy(rows, "symbol", -1).map((r) => r.symbol)).toEqual(["NVDA", "MSFT", "AAPL"]);
+  });
+
+  it("sorts by status rank (most actionable first when ascending)", () => {
+    const rows = [named("W", 96), named("T", 105), named("S", 90)];
+    expect(sortMonitorRowsBy(rows, "status", 1).map((r) => r.status)).toEqual([
+      "TRIGGERED",
+      "WATCH",
+      "STOPPED",
+    ]);
+  });
+
+  it("sinks unknown (NaN) values to the bottom in either direction", () => {
+    const noRisk = monitorRow({ symbol: "NR", price: 96, prevClose: 96, changePct: 0 }, plan({ riskPct: 0 }));
+    expect(Number.isNaN(noRisk.toEntryR)).toBe(true);
+    const rows = [noRisk, named("A", 96), named("B", 99)];
+    // toEntry itself is finite for all three; use a synthetic NaN column instead.
+    const withNaN = [{ ...named("A", 96), toT1: NaN }, named("B", 99), named("C", 105)];
+    expect(sortMonitorRowsBy(withNaN, "toT1", -1).map((r) => r.symbol)).toEqual(["B", "C", "A"]);
+    expect(sortMonitorRowsBy(withNaN, "toT1", 1).map((r) => r.symbol)).toEqual(["C", "B", "A"]);
+    expect(rows).toHaveLength(3); // fixture used
+  });
+
+  it("does not mutate the input order", () => {
+    const rows = [named("B", 105), named("A", 96)];
+    sortMonitorRowsBy(rows, "symbol", 1);
+    expect(rows.map((r) => r.symbol)).toEqual(["B", "A"]);
   });
 });
