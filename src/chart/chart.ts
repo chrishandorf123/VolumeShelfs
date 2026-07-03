@@ -188,6 +188,33 @@ export class VolumeShelfsChart {
       low = 0;
       high = 1;
     }
+    // Widen the domain so the structure the analysis talks about stays ON the
+    // chart: trade levels (entry/stop/T1/T2), overhead volume gaps and supply
+    // shelves above price, demand underneath. Capped so one far-away extreme
+    // can't crush the candles into a sliver.
+    const candleHigh = high;
+    const candleLow = low;
+    const capHigh = candleHigh * 1.45;
+    const capLow = candleLow * 0.7;
+    const include = (p: number | undefined | null): void => {
+      if (p === undefined || p === null || !Number.isFinite(p)) return;
+      if (p > high && p <= capHigh) high = p;
+      if (p < low && p >= capLow) low = p;
+    };
+    for (const lv of this.model?.overlays?.levels ?? []) include(lv.price);
+    const az = this.model?.analysis;
+    if (az) {
+      for (const g of az.gaps) {
+        include(g.priceLow);
+        include(g.priceHigh);
+      }
+      for (const s of az.shelves) {
+        include(s.priceLow);
+        include(s.priceHigh);
+      }
+      include(az.nearestSupply?.priceHigh);
+      include(az.nearestDemand?.priceLow);
+    }
     const pad = (high - low) * 0.04 || 1;
     const scale = this.model?.profile?.scale ?? "log";
     this.priceAxis = new PriceAxis(Math.max(low - pad, low * 0.98), high + pad, scale, this.plot);
