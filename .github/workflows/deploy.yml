@@ -31,6 +31,9 @@ jobs:
       - run: npm test
       - run: npm run build
       - uses: actions/configure-pages@v5
+        with:
+          # Turn Pages on for the repo automatically on the first run.
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
