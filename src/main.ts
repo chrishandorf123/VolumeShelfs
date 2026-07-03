@@ -18,6 +18,7 @@ import {
   DEFAULT_BACKTEST_CONFIG,
   buildTables,
   decide,
+  earlySignal,
   nextSteps,
   recommend,
   recoContextFromScan,
@@ -41,6 +42,7 @@ import { coachPanelHtml } from "./coach-view";
 import { recoPanelHtml } from "./reco-view";
 import { shannonPanelHtml } from "./shannon-view";
 import { disciplinePanelHtml, finalCallPanelHtml } from "./decision-view";
+import { earlyPanelHtml } from "./early-view";
 import { celebrate } from "./celebrate";
 import { loadPositions } from "./journal-store";
 import { confirmationPanelHtml, confluencePanelHtml, thesisPanelHtml } from "./thesis-view";
@@ -510,6 +512,7 @@ function renderExploreReco(r: ScanResult | null): void {
     finalCallPanelHtml(fc) +
     recoPanelHtml(reco) +
     coachPanelHtml(nextSteps(reco, plan, r.price)) +
+    (state.candles.length ? earlyPanelHtml(earlySignal(state.candles)) : "") +
     disciplinePanelHtml(disc) +
     (shan ? shannonPanelHtml(shan, r.price) : "") +
     confluencePanelHtml(r.confluence) +

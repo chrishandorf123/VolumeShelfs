@@ -10,6 +10,7 @@ import {
   checkDiscipline,
   closePosition,
   detectGaps,
+  earlySignal,
   finalCall,
   journalStats,
   markToMarket,
@@ -30,6 +31,7 @@ import {
   smaSeries,
   sortMonitorRows,
   type ChosenAnchor,
+  type EarlySignal,
   type JournalStats,
   type MarketRegime,
   type MonitorRow,
@@ -55,6 +57,7 @@ import { recoPanelHtml } from "./reco-view";
 import { shannonPanelHtml } from "./shannon-view";
 import { wireTrackButton } from "./trade-view";
 import { disciplinePanelHtml, finalCallPanelHtml, regimeChipHtml } from "./decision-view";
+import { earlyPanelHtml, earlyPillHtml } from "./early-view";
 import { celebrate } from "./celebrate";
 import { confirmationPanelHtml, confluencePanelHtml, thesisPanelHtml } from "./thesis-view";
 import { tradePlanPanelHtml, wirePositionSizer } from "./trade-view";
@@ -182,6 +185,15 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
   // Reco + plan are needed by the table, digest, CSV export and monitor; compute
   // each ticker's once per ranking pass instead of once per consumer.
   let recoCache = new Map<string, { reco: Recommendation; plan: TradePlan | null }>();
+  /** Early-signal cache, same lifecycle as recoCache. */
+  let earlyCache = new Map<string, EarlySignal | null>();
+  function earlyOf(ticker: string): EarlySignal | null {
+    if (!earlyCache.has(ticker)) {
+      const candles = lastInputs.find((i) => i.ticker === ticker)?.candles ?? [];
+      earlyCache.set(ticker, candles.length ? earlySignal(candles) : null);
+    }
+    return earlyCache.get(ticker) ?? null;
+  }
   function recoOf(r: ScanResult): { reco: Recommendation; plan: TradePlan | null } {
     let c = recoCache.get(r.ticker);
     if (!c) {
@@ -454,6 +466,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
   function rankAndRender(): void {
     results = scanUniverse(lastInputs, lastBenchmark, config);
     recoCache = new Map(); // results changed — recompute recos lazily
+    earlyCache = new Map();
     regime = marketRegime(lastBenchmark);
     els.regimeWrap.innerHTML = regimeChipHtml(regime);
     renderTable();
@@ -517,10 +530,32 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     const heading = anyBuy
       ? "Top trades right now"
       : "Nothing actionable yet — best names to stalk";
+
+    // Stealth watch: the signal BEFORE the signal — names still pre-trigger
+    // (no BUY verdict yet) whose early-accumulation tells are firing hardest.
+    const stealth = results
+      .filter((r) => {
+        const v = recoOf(r).reco.verdict;
+        return v !== "buy" && v !== "buy-dip" && v !== "avoid";
+      })
+      .map((r) => ({ r, sig: earlyOf(r.ticker) }))
+      .filter((x): x is { r: ScanResult; sig: EarlySignal } => !!x.sig && x.sig.score >= 45)
+      .sort((a, b) => b.sig.score - a.sig.score)
+      .slice(0, 4);
+    const stealthHtml = stealth.length
+      ? `<div class="stealth-row"><span class="stealth-label">🕵️ Stealth watch <span class="muted">— loading before the trigger</span></span>
+          ${stealth
+            .map(
+              (x) => `<button class="stealth-chip" type="button" data-ticker="${x.r.ticker}" title="${escapeHtml(x.sig.headline)}">
+                ${x.r.ticker} ${earlyPillHtml(x.sig)}</button>`,
+            )
+            .join("")}</div>`
+      : "";
+
     els.digest.innerHTML = `<div class="digest-head"><h3>${heading}</h3>
       <span class="muted">ranked by verdict → gates → confidence → confluence</span></div>
-      <div class="digest-cards">${cards}</div>`;
-    els.digest.querySelectorAll<HTMLButtonElement>(".dg-card").forEach((card) => {
+      <div class="digest-cards">${cards}</div>${stealthHtml}`;
+    els.digest.querySelectorAll<HTMLButtonElement>(".dg-card, .stealth-chip").forEach((card) => {
       card.addEventListener("click", () => select(card.dataset.ticker!));
     });
   }
@@ -553,6 +588,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
           <td class="tk">${r.ticker}${r.passedAll ? ' <span class="apex-badge">A+</span>' : ""}<div class="reco-chip reco-${reco.verdict}" title="${escapeHtml(reco.headline)}">${reco.label}</div></td>
           <td><div class="scorebar"><span style="width:${r.score.toFixed(0)}%"></span></div><b>${r.score.toFixed(0)}</b></td>
           <td><span class="cf-pill grade-${r.confluence.grade.replace("+", "plus")}" title="${r.confluence.passed}/10 confirmations${r.confluence.reversionIntoStrength ? " · reversion-into-strength" : r.confluence.chasing ? " · extended (chasing)" : ""}">${r.confluence.grade}<small>${r.confluence.passed}</small></span></td>
+          <td>${earlyPillHtml(earlyOf(r.ticker))}</td>
           <td class="gates-cell">${gates}</td>
           <td>${formatPrice(r.price)}</td>
           <td class="${r.rs.excess3mo >= 0 ? "pos" : "neg"}">${fmtPct(r.rs.excess3mo)}</td>
@@ -1143,6 +1179,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
       finalCallPanelHtml(fc) +
       recoPanelHtml(reco) +
       coachPanelHtml(nextSteps(reco, plan, r.price)) +
+      earlyPanelHtml(earlyOf(r.ticker)) +
       disciplinePanelHtml(disc) +
       confluencePanelHtml(r.confluence) +
       mainPlayPanel(r) +

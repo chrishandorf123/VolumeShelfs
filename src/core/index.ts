@@ -26,3 +26,4 @@ export * from "./regime";
 export * from "./discipline";
 export * from "./finalCall";
 export * from "./projector";
+export * from "./earlySignal";

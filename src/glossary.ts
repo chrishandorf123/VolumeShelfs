@@ -255,6 +255,14 @@ export const GLOSSARY: GlossaryEntry[] = [
       "The final call merges everything the app measures — the plain-English verdict, the market stage, weekly/daily alignment, the confluence scorecard, extension (chasing), and the discipline guard — into a single answer. Vetoes are absolute: a discipline block, a missing plan, or fighting the stage makes it NO-GO no matter how pretty the chart. An unearned trigger makes it WAIT. GO-HALF means the setup is valid but a caution flag (cold streak, drawdown, mixed regime) says take half size.",
     why: "A pile of indicators invites cherry-picking the ones that agree with what you already want to do. One call with the binding reason named removes that temptation.",
   },
+  {
+    id: "early-signal",
+    term: "Early signal (stealth accumulation)",
+    short: "Tells that precede the breakout the crowd waits for: dry-up, squeeze, OBV in, higher lows, pocket pivot.",
+    plain:
+      "Most traders' trigger is the breakout — by the time it prints, entries are crowded and the stop is far away. What tends to precede real breakouts is measurable: volume drying up (sellers exhausted), the range squeezing (a coiling spring), OBV climbing while price goes nowhere (someone accumulating without moving the tape), swing lows stepping up into a flat ceiling, and a pocket pivot (one up-day whose volume beats every down-day of the prior two weeks). The Early score weighs those tells while price is still UNDER the lid — early means before the trigger, not after it.",
+    why: "It gets you stalking the name with alerts set before the obvious signal fires — better entry, tighter stop, and you're selling into the crowd's excitement instead of buying it. It's a heads-up, not a buy signal: the Final Call still decides.",
+  },
 ];
 
 const BY_ID = new Map(GLOSSARY.map((e) => [e.id, e]));

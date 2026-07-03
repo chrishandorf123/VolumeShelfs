@@ -2340,3 +2340,79 @@ button.ghost:hover {
   line-height: 1.5;
 }
 .pos-proj b { color: var(--text); }
+
+/* ---- early signal (stealth accumulation) ---- */
+.early-pill {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-weight: 800;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+  cursor: help;
+}
+.early-pill small {
+  font-size: 8.5px;
+  letter-spacing: 0.5px;
+  font-weight: 800;
+}
+.early-loading {
+  color: #c879ef;
+  border-color: rgba(200, 121, 239, 0.65);
+  background: rgba(200, 121, 239, 0.12);
+  box-shadow: 0 0 10px rgba(200, 121, 239, 0.35);
+  animation: pulseViolet 2s ease-in-out infinite;
+}
+@keyframes pulseViolet {
+  0%, 100% { box-shadow: 0 0 6px rgba(200, 121, 239, 0.3); }
+  50% { box-shadow: 0 0 16px rgba(200, 121, 239, 0.65); }
+}
+.early-warming {
+  color: #f5c842;
+  border-color: rgba(245, 200, 66, 0.55);
+  background: rgba(245, 200, 66, 0.1);
+}
+.early-quiet { color: var(--muted); }
+.early-panel .early-head {
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 4px 0 8px;
+}
+.stealth-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(200, 121, 239, 0.35);
+}
+.stealth-label {
+  font-size: 11.5px;
+  font-weight: 800;
+}
+.stealth-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid rgba(200, 121, 239, 0.45);
+  border-radius: 7px;
+  padding: 4px 9px;
+  cursor: pointer;
+  transition: box-shadow 0.15s, transform 0.1s;
+}
+.stealth-chip:hover {
+  box-shadow: 0 0 14px rgba(200, 121, 239, 0.45);
+  transform: translateY(-1px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .early-loading, .topbar::after { animation: none; }
+}
