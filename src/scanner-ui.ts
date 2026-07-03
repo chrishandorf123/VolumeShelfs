@@ -34,6 +34,7 @@ import {
   sectorStrength,
   trimPosition,
   sideOf,
+  rankCompare,
   recoContextFromScan,
   recommend,
   rescoreUniverse,
@@ -651,18 +652,53 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     await sharedPacer.wait();
     setStatus(`Fetching benchmark ${benchSym}…`);
     lastBenchmark = await provider.fetchCandles({ symbol: benchSym, interval: "daily" as Interval }, apiKey || undefined);
+    // The benchmark is in hand — light the regime immediately and drop any
+    // stale sector filter so streaming rows are never silently hidden.
+    regime = marketRegime(lastBenchmark);
+    els.regimeWrap.innerHTML = regimeChipHtml(regime);
+    sectorFilter = null;
 
     const inputs: ScanInput[] = [];
     lastSkips = [];
+    // Results STREAM into the table as each ticker comes back, ranked live —
+    // on an every-US-stock run (an hour+), research starts on minute one
+    // instead of after the last fetch. The final full re-rank still happens in
+    // rankAndRender() once the pass completes.
+    const streamed: ScanResult[] = [];
+    let lastPartialRender = 0;
+    const renderPartial = (fetched: number) => {
+      results = [...streamed].sort(rankCompare);
+      lastInputs = inputs; // earlyOf/instOf/tapeOf read candles from here
+      renderSectorBoard();
+      renderTable();
+      renderDigest();
+      renderSkips();
+      updateFlowStrip();
+      const pass = streamed.filter((r) => r.passedAll).length;
+      setStatus(
+        `Scanning… ${fetched}/${symbols.length} fetched · ${pass} A+ so far — results are live-ranked below, click any row to start researching.`,
+      );
+    };
     for (let i = 0; i < symbols.length; i++) {
       await sharedPacer.wait();
-      setStatus(`Fetching ${symbols[i]} (${i + 1}/${symbols.length}) · ~${etaMin} min at ${callsPerMin}/min…`);
+      setStatus(`Fetching ${symbols[i]} (${i + 1}/${symbols.length}) · ~${etaMin} min at ${callsPerMin}/min · ${streamed.length} analyzed…`);
       try {
         const candles = await provider.fetchCandles({ symbol: symbols[i], interval: "daily" as Interval }, apiKey || undefined);
-        if (candles.length >= 60) inputs.push({ ticker: symbols[i], candles });
-        else lastSkips.push({ symbol: symbols[i], reason: `${candles.length} bars < 60 minimum` });
+        if (candles.length >= 60) {
+          inputs.push({ ticker: symbols[i], candles });
+          try {
+            streamed.push(scanTicker({ ticker: symbols[i], candles }, lastBenchmark, config));
+          } catch {
+            /* analyzed again in the final rankAndRender pass */
+          }
+        } else lastSkips.push({ symbol: symbols[i], reason: `${candles.length} bars < 60 minimum` });
       } catch (err) {
         lastSkips.push({ symbol: symbols[i], reason: err instanceof Error ? err.message : String(err) });
+      }
+      // Throttled: re-rank/re-render at most every ~2s, not per ticker.
+      if (streamed.length > 0 && Date.now() - lastPartialRender > 2000) {
+        lastPartialRender = Date.now();
+        renderPartial(i + 1);
       }
     }
     if (inputs.length === 0) throw new Error("No tickers returned enough data (check the key / rate limit)");

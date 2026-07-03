@@ -521,7 +521,8 @@ const hardGates = (r: ScanResult) =>
   (r.gates.trend.pass ? 1 : 0) +
   (r.gates.rs.pass ? 1 : 0);
 
-function rankCompare(a: ScanResult, b: ScanResult): number {
+/** The table's ranking: all-gates first, then hard-gate count, then score. */
+export function rankCompare(a: ScanResult, b: ScanResult): number {
   if (a.passedAll !== b.passedAll) return a.passedAll ? -1 : 1;
   const ha = hardGates(a);
   const hb = hardGates(b);
