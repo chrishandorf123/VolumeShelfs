@@ -17,7 +17,7 @@
           <span class="logo" aria-hidden="true"></span>
           <div>
             <h1>VolumeShelfs</h1>
-            <p>Anchored volume profile · shelves · break-even zones · gaps</p>
+            <p>scan · decide · guard · track — stocks · crypto · FX</p>
           </div>
         </div>
         <nav class="tabs" id="tabs">
@@ -175,6 +175,15 @@
             <button id="runScan" class="primary">Run scan</button>
           </div>
           <div class="control control-action regime-wrap" id="regimeWrap"></div>
+          <div class="control" id="rescanField" hidden>
+            <label for="rescanEvery">Auto-rescan</label>
+            <select id="rescanEvery" title="Re-run the full scan on a schedule (paced to your calls/min). The monitor keeps running between scans.">
+              <option value="0">Off</option>
+              <option value="15">Every 15 min</option>
+              <option value="30">Every 30 min</option>
+              <option value="60">Every 60 min</option>
+            </select>
+          </div>
           <div class="control control-action">
             <button id="advBtn" class="ghost">Filters ▾</button>
           </div>

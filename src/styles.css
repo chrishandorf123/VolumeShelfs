@@ -1,9 +1,9 @@
 :root {
-  --bg: #0e1117;
-  --panel: #141a26;
-  --panel-2: #1a2130;
-  --border: #232b3b;
-  --text: #e6e9ef;
+  --bg: #0a0e17;
+  --panel: #111726;
+  --panel-2: #161e30;
+  --border: #232b3f;
+  --text: #e8edf7;
   --muted: #8b95a7;
   --accent: #5b8def;
   --up: #26a69a;
@@ -897,7 +897,8 @@ table.results tbody tr:hover {
 }
 
 table.results tr.sel {
-  background: rgba(91, 141, 239, 0.14);
+  background: rgba(91, 141, 239, 0.12);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 td.tk {

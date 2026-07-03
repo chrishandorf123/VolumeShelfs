@@ -183,6 +183,8 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     regimeWrap: $("regimeWrap"),
     missionControl: $("missionControl"),
     posExport: $<HTMLButtonElement>("posExport"),
+    rescanField: $("rescanField"),
+    rescanEvery: $<HTMLSelectElement>("rescanEvery"),
   };
 
   // ONE pacer for ALL provider traffic (scan passes, monitor quotes and any
@@ -309,9 +311,42 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
       els.benchField.hidden = !live;
       els.scanProviderField.hidden = !live;
       els.rateField.hidden = !live;
+      els.rescanField.hidden = !live;
       els.scanKeyField.hidden = !live || !getProvider(els.scanProvider.value)?.requiresApiKey;
       syncMonitorVisibility();
+      scheduleRescan();
     });
+  });
+
+  // ---- auto-rescan scheduler ----------------------------------------------
+  // Re-runs the full universe scan on a timer (live mode, visible tab only).
+  // Defers politely when the API budget is busy with a scan/monitor pass.
+  let rescanTimer: number | null = null;
+  function stopRescanTimer(): void {
+    if (rescanTimer !== null) {
+      clearTimeout(rescanTimer);
+      rescanTimer = null;
+    }
+  }
+  function scheduleRescan(): void {
+    stopRescanTimer();
+    const mins = Number(els.rescanEvery.value) || 0;
+    if (!viewActive || source !== "live" || mins <= 0) return;
+    const fire = (): void => {
+      if (scanRunning || monitorRunning) {
+        rescanTimer = window.setTimeout(fire, 60_000); // busy — try again in a minute
+        return;
+      }
+      void run(); // run()'s finally re-arms the next cycle via scheduleRescan()
+    };
+    rescanTimer = window.setTimeout(fire, mins * 60_000);
+  }
+  els.rescanEvery.value = localStorage.getItem("vs.rescanEvery") ?? "0";
+  els.rescanEvery.addEventListener("change", () => {
+    localStorage.setItem("vs.rescanEvery", els.rescanEvery.value);
+    scheduleRescan();
+    const mins = Number(els.rescanEvery.value) || 0;
+    setStatus(mins > 0 ? `Auto-rescan armed — full re-rank every ${mins} min.` : "Auto-rescan off.", "ok");
   });
 
   // ---- watchlist / universe helpers -------------------------------------
@@ -473,6 +508,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
       // A checked auto-refresh toggle should start watching as soon as there
       // is a live watchlist to watch (otherwise it could stay armed-but-idle).
       scheduleMonitor();
+      scheduleRescan(); // arm the next full re-rank cycle
     }
   }
 
@@ -1568,10 +1604,12 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
       else chart?.resize();
       syncMonitorVisibility();
       scheduleMonitor(); // resume auto-refresh if it was left on
+      scheduleRescan();
     },
     deactivate() {
       viewActive = false; // also breaks any in-flight monitor pass
       stopMonitorTimer(); // don't keep polling the API while the tab is hidden
+      stopRescanTimer();
     },
   };
 }
