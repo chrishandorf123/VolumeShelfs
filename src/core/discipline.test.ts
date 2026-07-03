@@ -17,6 +17,7 @@ function base(over: Partial<DisciplineInput> = {}): DisciplineInput {
     rMultipleT1: 1.6,
     positions: [],
     regime: GREEN,
+    tape: { level: "CLEAN", character: "none" },
     ...over,
   };
 }
@@ -97,8 +98,12 @@ describe("tape-quality check (manipulation, both kinds)", () => {
     expect(long.sizeFactor).toBe(0.5);
   });
 
-  it("skips the check entirely when no tape read is available", () => {
-    expect(checkDiscipline(base()).checks.some((c) => c.id === "tape")).toBe(false);
+  it("warns (unscreened) when no tape read is available — never silently clean", () => {
+    const rep = checkDiscipline(base({ tape: undefined }));
+    const tape = rep.checks.find((c) => c.id === "tape");
+    expect(tape?.level).toBe("warn");
+    expect(tape?.message).toMatch(/unscreened/i);
+    expect(rep.sizeFactor).toBe(0.5);
   });
 });
 

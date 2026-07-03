@@ -24,7 +24,9 @@ export function tapeIconHtml(rep: AnomalyReport | null): string {
 
 /** Who's in the name: the institutional accumulation/distribution read. */
 export function institutionalPanelHtml(read: InstitutionalRead | null): string {
-  if (!read) return "";
+  if (!read)
+    return `<div class="panel"><h2 data-glossary="institutional" title="Click to learn">🏦 Institutional footprint</h2>
+      <div class="empty">Needs ~60 bars of history — no accumulation/distribution read on this name yet.</div></div>`;
   const rows = read.evidence
     .map(
       (e) => `<div class="gate-row ${e.vote > 0 ? "pass" : e.vote < 0 ? "fail" : "warn"}">
@@ -38,7 +40,9 @@ export function institutionalPanelHtml(read: InstitutionalRead | null): string {
 
 /** The manipulation read — with its character spelled out. */
 export function anomalyPanelHtml(rep: AnomalyReport | null): string {
-  if (!rep) return "";
+  if (!rep)
+    return `<div class="panel"><h2 data-glossary="manipulation" title="Click to learn">🎛 Tape check <span class="tape-chip warn">UNSCREENED</span></h2>
+      <div class="empty">Needs ~80 bars of history — this tape is UNSCREENED for manipulation patterns. The discipline guard sizes down accordingly.</div></div>`;
   const chr =
     rep.character === "predatory"
       ? '<span class="tape-chip bad">☠ PREDATORY</span>'

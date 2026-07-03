@@ -239,6 +239,7 @@
 
         <main class="scanner-workspace">
           <div class="results-pane">
+            <div class="skipped-row" id="skippedRow" hidden></div>
             <div class="digest" id="digest"></div>
             <table class="results" id="resultsTable">
               <thead>
@@ -263,6 +264,7 @@
                 <button class="tf active" data-bars="126">6M</button>
                 <button class="tf" data-bars="252">1Y</button>
                 <button class="tf" data-bars="0">All</button>
+                <button class="tf tf-max" id="scanFullMap" title="Full map — profile from ALL history, so shelves at old highs/lows (what's coming) stay visible. The trade plan still reads the anchored profile.">🗺 Full map</button>
                 <button class="tf tf-max" id="scanChartMax" title="Focus mode — big chart (hides the results list)">⛶ Focus</button>
               </div>
               <canvas id="scanChart"></canvas>

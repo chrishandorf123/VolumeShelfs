@@ -1,7 +1,10 @@
 import {
+  DEFAULT_OPTIONS,
   DEFAULT_SCAN_CONFIG,
+  analyzeProfile,
   anchoredVwapBands,
   anchoredVwapSeries,
+  computeAnchoredProfile,
   buildThesis,
   buildTradePlan,
   defaultAnchorHighIndex,
@@ -184,6 +187,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     posStats: $("posStats"),
     positionsBody: $("positionsBody"),
     regimeWrap: $("regimeWrap"),
+    skippedRow: $("skippedRow"),
     missionControl: $("missionControl"),
     posExport: $<HTMLButtonElement>("posExport"),
     rescanField: $("rescanField"),
@@ -293,6 +297,18 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
       const bars = Number(btn.dataset.bars);
       chart?.setVisibleCount(bars > 0 ? bars : null);
     });
+  });
+
+  // Full map: detail chart profile from ALL history (shelves at old highs/lows
+  // stay visible), while the verdict/plan panels keep the anchored read.
+  let scanFullMap = localStorage.getItem("vs.scanFullMap") === "1";
+  const fullMapBtn = $<HTMLButtonElement>("scanFullMap");
+  fullMapBtn.classList.toggle("active", scanFullMap);
+  fullMapBtn.addEventListener("click", () => {
+    scanFullMap = !scanFullMap;
+    localStorage.setItem("vs.scanFullMap", scanFullMap ? "1" : "0");
+    fullMapBtn.classList.toggle("active", scanFullMap);
+    renderSelectedDetail();
   });
 
   // Focus mode: collapse the results list so the chart gets the full width.
@@ -496,11 +512,13 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
       if (source === "demo") {
         lastInputs = buildDemoUniverse().map((u) => ({ ticker: u.ticker, candles: u.candles }));
         lastBenchmark = buildDemoBenchmark();
+        lastSkips = [];
         setStatus(`Scanning ${lastInputs.length} demo tickers…`);
       } else {
         await loadLiveUniverse();
       }
       rankAndRender();
+      renderSkips();
       resetMonitorState(); // new scan = new plans; old statuses/alerts don't apply
       syncMonitorVisibility();
       const pass = results.filter((r) => r.passedAll).length;
@@ -544,21 +562,30 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     lastBenchmark = await provider.fetchCandles({ symbol: benchSym, interval: "daily" as Interval }, apiKey || undefined);
 
     const inputs: ScanInput[] = [];
-    let failed = 0;
+    lastSkips = [];
     for (let i = 0; i < symbols.length; i++) {
       await sharedPacer.wait();
       setStatus(`Fetching ${symbols[i]} (${i + 1}/${symbols.length}) · ~${etaMin} min at ${callsPerMin}/min…`);
       try {
         const candles = await provider.fetchCandles({ symbol: symbols[i], interval: "daily" as Interval }, apiKey || undefined);
         if (candles.length >= 60) inputs.push({ ticker: symbols[i], candles });
-        else failed += 1;
-      } catch {
-        failed += 1; // skip failed tickers; surfaced via count
+        else lastSkips.push({ symbol: symbols[i], reason: `${candles.length} bars < 60 minimum` });
+      } catch (err) {
+        lastSkips.push({ symbol: symbols[i], reason: err instanceof Error ? err.message : String(err) });
       }
     }
     if (inputs.length === 0) throw new Error("No tickers returned enough data (check the key / rate limit)");
-    if (failed > 0) setStatus(`${inputs.length} scanned, ${failed} skipped (no data / limit).`, "ok");
     lastInputs = inputs;
+  }
+
+  /** Skipped tickers get a persistent, named row — never just an anonymous count. */
+  let lastSkips: Array<{ symbol: string; reason: string }> = [];
+  function renderSkips(): void {
+    els.skippedRow.hidden = lastSkips.length === 0;
+    if (lastSkips.length === 0) return;
+    els.skippedRow.innerHTML = `⚠ Skipped ${lastSkips.length}: ${lastSkips
+      .map((s) => `<span class="skip-chip" title="${escapeHtml(s.reason)}">${s.symbol}</span>`)
+      .join(" ")} <span class="muted">— hover a name for the reason</span>`;
   }
 
   function rankAndRender(): void {
@@ -593,17 +620,23 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
   // Leaders cluster in leading groups: rank sectors by breadth + RS and let a
   // click filter the table to that group (click again to clear).
   function renderSectorBoard(): void {
-    const rows = sectorStrength(
-      results.map((r) => ({
-        ticker: r.ticker,
-        sector: sectorOf(r.ticker),
-        rsExcess: r.rs.excess3mo,
-        trendPass: r.gates.trend.pass,
-        score: r.score,
-      })),
-    ).filter((s) => s.sector !== "Index ETF");
+    const items = results.map((r) => ({
+      ticker: r.ticker,
+      sector: sectorOf(r.ticker),
+      rsExcess: r.rs.excess3mo,
+      trendPass: r.gates.trend.pass,
+      score: r.score,
+    }));
+    const rows = sectorStrength(items).filter((s) => s.sector !== "Index ETF");
     els.sectorBoard.hidden = rows.length === 0;
     if (rows.length === 0) return;
+    // Solo names (groups of 1) get no group read — count them visibly instead
+    // of letting them silently vanish from the board.
+    const grouped = new Set(rows.flatMap((s) => items.filter((i) => i.sector === s.sector).map((i) => i.ticker)));
+    const solo = items.filter((i) => !grouped.has(i.ticker) && i.sector !== "Index ETF");
+    const soloChip = solo.length
+      ? `<span class="sb-chip sb-solo" title="${escapeHtml(solo.map((s) => `${s.ticker} (${s.sector})`).join(", "))} — groups need 2+ names for a read">+${solo.length} solo</span>`
+      : "";
     els.sectorBoard.innerHTML =
       `<span class="sb-label">GROUPS</span>` +
       rows
@@ -614,8 +647,9 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
             title="${s.n} names · ${(s.breadth * 100).toFixed(0)}% in uptrends · avg RS ${fmtPct(s.avgRs)} · leaders: ${s.leaders.join(", ")} — click to filter the table">
             ${escapeHtml(s.sector)} <b>${(s.breadth * 100).toFixed(0)}%</b> <small>${fmtPct(s.avgRs)}</small></button>`;
         })
-        .join("");
-    els.sectorBoard.querySelectorAll<HTMLButtonElement>(".sb-chip").forEach((chip) => {
+        .join("") +
+      soloChip;
+    els.sectorBoard.querySelectorAll<HTMLButtonElement>(".sb-chip[data-sector]").forEach((chip) => {
       chip.addEventListener("click", () => {
         const sec = chip.dataset.sector!;
         sectorFilter = sectorFilter === sec ? null : sec;
@@ -907,15 +941,19 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     }
   }
 
-  /** The ranked names that have a concrete plan to watch (top MONITOR_MAX). */
-  function monitorTargets(): Array<{ symbol: string; plan: TradePlan }> {
-    const out: Array<{ symbol: string; plan: TradePlan }> = [];
+  /** The ranked names that have a concrete plan to watch (top MONITOR_MAX),
+   *  plus how many QUALIFIED overall — the cap must never masquerade as full
+   *  coverage in the meta line. */
+  function monitorTargets(): { targets: Array<{ symbol: string; plan: TradePlan }>; planned: number } {
+    const targets: Array<{ symbol: string; plan: TradePlan }> = [];
+    let planned = 0;
     for (const r of results) {
       const { plan } = recoOf(r);
-      if (plan) out.push({ symbol: r.ticker, plan });
-      if (out.length >= MONITOR_MAX) break;
+      if (!plan) continue;
+      planned += 1;
+      if (targets.length < MONITOR_MAX) targets.push({ symbol: r.ticker, plan });
     }
-    return out;
+    return { targets, planned };
   }
 
   async function runMonitor(): Promise<void> {
@@ -939,7 +977,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
       setStatus(`${provider.label} needs an API key for live quotes.`, "error");
       return;
     }
-    const targets = monitorTargets();
+    const { targets, planned } = monitorTargets();
     if (targets.length === 0) {
       setStatus("Run a scan first — the monitor watches the ranked names against their plans.", "error");
       return;
@@ -995,7 +1033,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
       }
       // Render once per pass (progress lives in the meta line above) — a
       // per-quote rebuild is O(n²) DOM work for no extra information.
-      renderMonitor(sortMonitorRows(rows), failures, targets.length);
+      renderMonitor(sortMonitorRows(rows), failures, targets.length, planned);
       renderPositions(); // open positions just got fresh marks
       const triggered = rows.filter((r) => r.status === "TRIGGERED" || r.status === "APPROACHING").length;
       setStatus(
@@ -1014,7 +1052,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     }
   }
 
-  function renderMonitor(rows: MonitorRow[], failures: Array<{ symbol: string; message: string }>, total: number): void {
+  function renderMonitor(rows: MonitorRow[], failures: Array<{ symbol: string; message: string }>, total: number, planned = total): void {
     // Freshness comes from the single most-recent row, so the live/close label
     // and the timestamp can't be mixed from two different symbols.
     const stampOf = (r: MonitorRow) => r.asOf || r.day || "";
@@ -1030,8 +1068,10 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     const skipped = failures.length
       ? ` · ${failures.length} skipped: ${failures.slice(0, 3).map((f) => f.symbol).join(", ")}${failures.length > 3 ? "…" : ""}`
       : "";
+    // Never let the cap read as full coverage: say when names went unwatched.
+    const capNote = planned > total ? ` · top ${total} of ${planned} planned (${planned - total} unwatched)` : "";
     els.monitorMeta.textContent = rows.length
-      ? `${rows.length}/${total} quoted${skipped}${freshness}${checked}`
+      ? `${rows.length}/${total} quoted${capNote}${skipped}${freshness}${checked}`
       : "";
     els.monitorMeta.title = failures.length ? failures.map((f) => `${f.symbol}: ${f.message}`).join("\n") : "";
     // Standing price alerts, removable inline.
@@ -1165,7 +1205,13 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
       : "";
 
     const open = positions.filter((p) => p.status === "open");
-    const closed = positions.filter((p) => p.status === "closed").slice(-10).reverse();
+    const closedAll = positions.filter((p) => p.status === "closed");
+    const closed = closedAll.slice(-10).reverse();
+    // The stats above count ALL closed trades — say when the table shows fewer.
+    const truncNote =
+      closedAll.length > closed.length
+        ? `<div class="pos-trunc muted">showing the last ${closed.length} of ${closedAll.length} closed — Export downloads all of them</div>`
+        : "";
     const rowsHtml = [...open, ...closed]
       .map((p) => {
         const isOpen = p.status === "open";
@@ -1205,8 +1251,11 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     const closedChrono = positions
       .filter((p) => p.status === "closed")
       .sort((a, b) => (a.closedAt ?? 0) - (b.closedAt ?? 0));
-    // Which signals pay THIS trader: avg R per signal bucket (n ≥ 2 to show).
-    const buckets = edgeBreakdown(positions).filter((b) => b.n >= 2);
+    // Which signals pay THIS trader: avg R per signal bucket (n ≥ 2 to show —
+    // single-trade buckets are counted and disclosed, not silently dropped).
+    const allBuckets = edgeBreakdown(positions);
+    const buckets = allBuckets.filter((b) => b.n >= 2);
+    const hiddenBuckets = allBuckets.length - buckets.length;
     const edgeHtml = buckets.length
       ? `<details class="edge-brk"><summary>🧠 Edge breakdown — which signals pay YOU</summary>
           <table class="mon-table"><thead><tr><th>Signal</th><th>Value</th><th>n</th><th>Avg R</th><th>Total R</th></tr></thead>
@@ -1217,10 +1266,12 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
                 <td class="${b.totalR >= 0 ? "pos" : "neg"}">${fmtR(b.totalR)}</td></tr>`,
             )
             .join("")}</tbody></table>
-          <p class="fc-note muted">Trades tagged at entry with the signals that were firing. Lean into the rows that pay; question the ones that don't.</p>
+          <p class="fc-note muted">Trades tagged at entry with the signals that were firing. Lean into the rows that pay; question the ones that don't.${hiddenBuckets > 0 ? ` ${hiddenBuckets} single-trade bucket${hiddenBuckets > 1 ? "s" : ""} hidden — a bucket needs 2+ trades to score.` : ""}</p>
         </details>`
-      : "";
-    els.positionsBody.innerHTML = `${equityCurveSvg(closedChrono)}${projectionLine(stats)}${edgeHtml}<table class="mon-table">
+      : hiddenBuckets > 0
+        ? `<div class="pos-trunc muted">🧠 Edge breakdown: ${hiddenBuckets} signal bucket${hiddenBuckets > 1 ? "s" : ""} so far, each with only 1 trade — it appears once a bucket reaches 2.</div>`
+        : "";
+    els.positionsBody.innerHTML = `${equityCurveSvg(closedChrono)}${projectionLine(stats)}${edgeHtml}${truncNote}<table class="mon-table">
       <thead><tr>
         <th></th><th>Ticker</th><th>Opened</th><th>Entry × sh</th><th>Stop</th>
         <th>Last / Exit</th><th title="Open (or realized) P&L in dollars and in R — units of the initial risk">P&L</th>
@@ -1586,11 +1637,23 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     const candles = lastInputs.find((i) => i.ticker === r.ticker)?.candles ?? [];
     // Show only the significant air pockets (top few by height) so the chart
     // stays readable rather than labelling every thin low-volume row.
+    // Draw every gap the GATE can trade (same minGapPct threshold — the chart
+    // must never contradict an active "ride the air pocket" play), the active
+    // play's own gap unconditionally, and cap for readability at 6 keeping the
+    // gaps NEAREST price (the ones it enters next), not the tallest.
     const allGaps = detectGaps(r.profile, { shelfThreshold: 0.55, gapThreshold: 0.15 });
-    const gaps = allGaps
-      .filter((g) => (g.priceHigh - g.priceLow) / r.price >= 0.05)
-      .sort((a, b) => b.priceHigh - b.priceLow - (a.priceHigh - a.priceLow))
-      .slice(0, 4);
+    let gaps = allGaps.filter((g) => (g.priceHigh - g.priceLow) / r.price >= config.minGapPct);
+    const gp0 = r.gapPlay;
+    if (gp0?.active && !gaps.some((g) => g.priceLow === gp0.gap.priceLow && g.priceHigh === gp0.gap.priceHigh)) {
+      gaps = [...gaps, gp0.gap];
+    }
+    gaps = gaps
+      .sort(
+        (a, b) =>
+          Math.abs((a.priceLow + a.priceHigh) / 2 - r.price) -
+          Math.abs((b.priceLow + b.priceHigh) / 2 - r.price),
+      )
+      .slice(0, 6);
     const analysis: ProfileAnalysis = {
       shelves: r.shelves,
       gaps,
@@ -1631,6 +1694,31 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
           { label: `T2 ${formatPrice(plan.t2)}`, price: plan.t2, color: "#26a69a", dashed: true },
         ]
       : [];
+
+    // Full map: swap the drawn profile/zones for the whole-history read (the
+    // Explore tab's "Profile range: Full history", lifted here) so shelves at
+    // old highs/lows stay visible. Overlays/levels keep the anchored trade.
+    if (scanFullMap && candles.length > 0) {
+      const fullProfile = computeAnchoredProfile(candles, 0, {
+        rowCount: config.rows,
+        scale: "log",
+        valueAreaFraction: 0.7,
+      });
+      const fullAnalysis = analyzeProfile(fullProfile, r.price, {
+        shelfThreshold: DEFAULT_OPTIONS.shelfThreshold,
+        gapThreshold: DEFAULT_OPTIONS.gapThreshold,
+      });
+      return {
+        candles,
+        profile: fullProfile,
+        analysis: fullAnalysis,
+        anchorIndex: r.anchor.index,
+        currentPrice: r.price,
+        show: { profile: true, shelves: true, gaps: true, valueArea: false },
+        overlays: { series, levels },
+        fitProfileRange: true,
+      };
+    }
 
     return {
       candles,

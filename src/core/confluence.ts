@@ -69,13 +69,17 @@ function meanVolume(candles: Candle[], lookback: number): number {
   return count > 0 ? sum / count : NaN;
 }
 
-/** Higher-timeframe (weekly) uptrend: close above a rising ~10-week average. */
-function weeklyUptrend(candles: Candle[]): boolean {
+/**
+ * Higher-timeframe (weekly) uptrend: close above a rising ~10-week average.
+ * Returns null when there aren't enough weeks to judge — data starvation must
+ * stay distinguishable from a genuinely bearish weekly.
+ */
+function weeklyUptrend(candles: Candle[]): boolean | null {
   const wk = resampleWeekly(candles);
   // Need enough weeks that the 10-week MA slope (lookback 4) is actually defined
   // — otherwise slopeOf reads a NaN and returns "unknown", which would slip past
   // a "!= falling" guard even while the MA is genuinely falling.
-  if (wk.length < 15) return false;
+  if (wk.length < 15) return null;
   const closes = wk.map((c) => c.close);
   const ma = smaLast(closes, 10);
   const slope = slopeOf(smaSeries(closes, 10), 4, 0.003);
@@ -178,8 +182,13 @@ export function computeConfluence(inp: ConfluenceInputs): ConfluenceScore {
       id: "weekly",
       tier: 5,
       label: "Weekly bias aligned with the daily setup",
-      pass: weeklyOk,
-      detail: weeklyOk ? "weekly uptrend" : "weekly not up",
+      pass: weeklyOk === true,
+      detail:
+        weeklyOk === null
+          ? "not enough weekly history to judge (<15 weeks) — n/a, not bearish"
+          : weeklyOk
+            ? "weekly uptrend"
+            : "weekly not up",
     },
     {
       id: "not-extended",

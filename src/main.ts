@@ -218,8 +218,24 @@ function recompute(): void {
   // lows (where price traded years ago) stay on the map — "what's coming" if
   // price travels. The trade logic (scan/AVWAP/plan) stays on the chosen anchor.
   const fullRange = state.profileRange === "full";
+  // Full mode spans a much larger price range — auto-scale the row count so
+  // each row keeps roughly the anchored view's price resolution (capped at 240).
+  let rowCount = state.options.rowCount;
+  if (fullRange && c.length > 1) {
+    const span = (from: number) => {
+      let lo = Infinity;
+      let hi = -Infinity;
+      for (let i = from; i < c.length; i++) {
+        if (c[i].low < lo) lo = c[i].low;
+        if (c[i].high > hi) hi = c[i].high;
+      }
+      return lo > 0 ? hi / lo : 1;
+    };
+    const ratio = Math.log(Math.max(1.01, span(0))) / Math.log(Math.max(1.01, span(anchor)));
+    if (Number.isFinite(ratio) && ratio > 1) rowCount = Math.min(240, Math.round(rowCount * ratio));
+  }
   const profile = computeAnchoredProfile(c, fullRange ? 0 : anchor, {
-    rowCount: state.options.rowCount,
+    rowCount,
     scale: state.options.scale,
     valueAreaFraction: state.options.valueAreaFraction,
   });
@@ -484,9 +500,15 @@ function isHighAnchorBar(candles: Candle[], index: number, look = 20): boolean {
   return maxH - bar.high <= bar.low - minL; // closer to the top => a high anchor
 }
 
+/** Why the last explore scan produced nothing — surfaced instead of a blank panel. */
+let exploreScanFailure = "";
+
 /** Run the single-symbol scan on the chart's anchor (RS unknown, no benchmark). */
 function runExploreScan(c: Candle[], anchorIndex: number, anchoredFromHigh: boolean): ScanResult | null {
-  if (c.length < 20) return null;
+  if (c.length < 20) {
+    exploreScanFailure = `Not enough history to analyze — have ${c.length} bars, need 20+.`;
+    return null;
+  }
   try {
     const cfg = {
       ...DEFAULT_SCAN_CONFIG,
@@ -498,8 +520,10 @@ function runExploreScan(c: Candle[], anchorIndex: number, anchoredFromHigh: bool
       index: Math.min(Math.max(anchorIndex, 0), c.length - 1),
       label: anchoredFromHigh ? "swing-high" : "swing-low",
     };
+    exploreScanFailure = "";
     return scanTicker({ ticker: "symbol", candles: c }, c, cfg, forced);
-  } catch {
+  } catch (err) {
+    exploreScanFailure = `Analysis failed: ${err instanceof Error ? err.message : String(err)}`;
     return null;
   }
 }
@@ -507,12 +531,19 @@ function runExploreScan(c: Candle[], anchorIndex: number, anchoredFromHigh: bool
 /** Render the verdict + confluence + bull/bear thesis + confirmation panels. */
 function renderExploreReco(r: ScanResult | null): void {
   if (!r) {
-    els.exploreReco.innerHTML = "";
+    // Never blank the decision stack silently — say WHY there is no read.
+    els.exploreReco.innerHTML = state.candles.length
+      ? `<div class="panel"><h2>No analysis</h2><div class="empty">${exploreScanFailure || "Not enough history to analyze this symbol."}</div></div>`
+      : "";
     return;
   }
   const plan = buildTradePlan(r);
   const reco = recommend({ ...recoContextFromScan(r), rsOk: null }, plan);
-  const shan = state.candles.length ? shannonRead(state.candles) : null;
+  // Stage/MTF math is calibrated on daily bars; "52-week"/"1y" anchor windows
+  // scale with the loaded interval so the labels stay honest.
+  const isDaily = els.interval.value === "daily";
+  const barsPerYear = ({ daily: 252, weekly: 52, monthly: 12 } as Record<string, number>)[els.interval.value] ?? 252;
+  const shan = state.candles.length && isDaily ? shannonRead(state.candles, barsPerYear) : null;
 
   // Direction: mirror to the short side in a confirmed downtrend.
   const bearish = shan?.stage?.stage === 4 || (!r.gates.trend.pass && shan?.mtf.weekly === "down");
@@ -569,7 +600,11 @@ function renderExploreReco(r: ScanResult | null): void {
       : "") +
     proofPanelHtml(exploreProof(symbol)) +
     disciplinePanelHtml(disc) +
-    (shan ? shannonPanelHtml(shan, r.price) : "") +
+    (shan
+      ? shannonPanelHtml(shan, r.price)
+      : !isDaily
+        ? `<div class="panel"><h2>AVWAP map (Shannon)</h2><div class="empty">The stage/timeframe read is calibrated on daily bars — switch Interval to Daily for it.</div></div>`
+        : "") +
     confluencePanelHtml(r.confluence) +
     thesisPanelHtml(buildThesis(r)) +
     confirmationPanelHtml(r.confirmation) +
@@ -682,7 +717,10 @@ function afterLoad(): void {
  */
 function updateModel(): void {
   const c = state.candles;
-  if (c.length < 260) {
+  // The backtest's windows (200-bar trend, 20-bar time stop…) are calibrated
+  // in DAILY bars — running them on weekly/monthly bars silently reports
+  // probabilities for a different game.
+  if (els.interval.value !== "daily" || c.length < 260) {
     els.modelPanel.innerHTML = `<div class="panel model-panel"><div class="model-banner aside"><span class="mb-icon">⊘</span><span class="mb-label">MODEL</span></div><p class="model-why">Need ~260+ daily bars of history to backtest this symbol. Load more history (or a daily interval).</p></div>`;
     return;
   }

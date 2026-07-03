@@ -188,6 +188,11 @@ export function checkDiscipline(input: DisciplineInput): DisciplineReport {
 
   // 8. Tape quality: predatory manipulation blocks; smart-money games CAN be
   //    a tell in your favor — when they point the same way as your trade.
+  //    NO read at all (too little history) is itself a caution: unscreened
+  //    tape must not silently pass as clean.
+  if (!input.tape) {
+    checks.push(check("tape", "Tape quality", "warn", "No tape read — needs ~80 bars of history. Unscreened for manipulation; treat with half size."));
+  }
   if (input.tape) {
     const { level, character } = input.tape;
     const gamesFavor = (side === "long" && character === "games-accumulation") || (side === "short" && character === "games-distribution");

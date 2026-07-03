@@ -2598,3 +2598,32 @@ button.ghost:hover {
   box-shadow: 0 0 12px rgba(91, 141, 239, 0.4);
 }
 .pos-trim { font-size: 11px; padding: 2px 7px; }
+
+/* ---- transparency notes (design-limits audit) ---- */
+.pos-trunc {
+  padding: 4px 12px 8px;
+  font-size: 10.5px;
+}
+.skipped-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11.5px;
+  color: #f5c842;
+  background: rgba(245, 200, 66, 0.06);
+}
+.skip-chip {
+  border: 1px solid rgba(245, 200, 66, 0.45);
+  border-radius: 5px;
+  padding: 1px 6px;
+  font-weight: 700;
+  cursor: help;
+  color: var(--text);
+}
+.sb-chip.sb-solo {
+  opacity: 0.65;
+  cursor: help;
+}

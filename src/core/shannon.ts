@@ -95,19 +95,21 @@ export function indexBiggestGap(candles: Candle[], window = BARS_52W, minGap = 0
  * and anchors too close to the last bar are dropped (an AVWAP needs bars after
  * its anchor to mean anything).
  */
-export function eventAnchors(candles: Candle[]): EventAnchor[] {
+export function eventAnchors(candles: Candle[], barsPerYear = BARS_52W): EventAnchor[] {
   const n = candles.length;
   if (n < 30) return [];
+  // barsPerYear keeps "52-week"/"1y" honest on non-daily intervals: 252 daily
+  // bars, 52 weekly bars, 12 monthly bars all span one calendar year.
   const specs: Array<{ kind: EventAnchorKind; label: string; index: number }> = [
     { kind: "ath", label: "All-time high", index: index52wHigh(candles, n) },
     { kind: "atl", label: "All-time low", index: index52wLow(candles, n) },
-    { kind: "52w-high", label: "52-week high", index: index52wHigh(candles) },
-    { kind: "52w-low", label: "52-week low", index: index52wLow(candles) },
+    { kind: "52w-high", label: "52-week high", index: index52wHigh(candles, barsPerYear) },
+    { kind: "52w-low", label: "52-week low", index: index52wLow(candles, barsPerYear) },
     { kind: "ytd", label: "Year start", index: indexYtdOpen(candles) },
     { kind: "quarter", label: "Quarter start", index: indexQuarterOpen(candles) },
     { kind: "month", label: "Month start", index: indexMonthOpen(candles) },
-    { kind: "gap", label: "Biggest gap (1y)", index: indexBiggestGap(candles) },
-    { kind: "high-volume", label: "Highest volume (1y)", index: indexHighVolumeDay(candles) },
+    { kind: "gap", label: "Biggest gap (1y)", index: indexBiggestGap(candles, barsPerYear) },
+    { kind: "high-volume", label: "Highest volume (1y)", index: indexHighVolumeDay(candles, barsPerYear) },
     { kind: "listing", label: "First bar", index: 0 },
   ];
   const seen = new Set<number>();
@@ -133,8 +135,8 @@ export interface AvwapMapRow {
 }
 
 /** Ladder of all event AVWAPs sorted top-down around the current price. */
-export function buildAvwapMap(candles: Candle[]): AvwapMapRow[] {
-  return eventAnchors(candles)
+export function buildAvwapMap(candles: Candle[], barsPerYear = BARS_52W): AvwapMapRow[] {
+  return eventAnchors(candles, barsPerYear)
     .map((anchor) => {
       const state = avwapState(candles, anchor.index);
       return { anchor, state, role: (state.priceAbove ? "support" : "supply") as AvwapMapRow["role"] };
@@ -281,11 +283,11 @@ export interface ShannonRead {
   handoff: AvwapHandoff | null;
 }
 
-export function shannonRead(candles: Candle[]): ShannonRead {
+export function shannonRead(candles: Candle[], barsPerYear = BARS_52W): ShannonRead {
   return {
     stage: stageOf(candles),
     mtf: mtfAlignment(candles),
-    map: buildAvwapMap(candles),
+    map: buildAvwapMap(candles, barsPerYear),
     handoff: avwapHandoff(candles),
   };
 }

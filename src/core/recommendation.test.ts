@@ -55,6 +55,14 @@ describe("recommend", () => {
     expect(recommend(base, { ...plan, riskPct: 0.2 }).verdict).toBe("watch");
   });
 
+  it("never lets synthetic (percent-marker) targets green-light a buy", () => {
+    // Same great R numbers — but both targets are invented ±3% markers.
+    const synthetic = { ...plan, t1Synthetic: true, t2Synthetic: true };
+    expect(recommend(base, synthetic).verdict).toBe("watch");
+    // One REAL target with good R still buys.
+    expect(recommend(base, { ...plan, t2Synthetic: true }).verdict).toBe("buy-dip");
+  });
+
   it("says WAIT FOR RECLAIM when the shelf is there but price is below its AVWAP", () => {
     // Price 20 genuinely below the AVWAP (21), matching the verdict's meaning.
     const r = recommend({ ...base, avwapBullish: false, avwapReclaim: false, avwapValue: 21 }, plan);

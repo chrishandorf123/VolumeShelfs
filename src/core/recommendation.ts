@@ -120,7 +120,11 @@ export function recommend(ctx: RecoContext, plan: TradePlan | null): Recommendat
     // Green light candidate: uptrend + support + AVWAP confirmation. But only
     // call a buy if the trade itself is worth taking — a wide stop or a target
     // that's barely above entry is a bad trade even with a great backdrop.
-    const bestR = plan ? Math.max(safe(plan.rMultipleT1), safe(plan.rMultipleT2)) : Infinity;
+    // Synthetic (percent-marker) targets carry no real reward information —
+    // never let an invented +3% line green-light a buy.
+    const t1R = plan && !plan.t1Synthetic ? safe(plan.rMultipleT1) : 0;
+    const t2R = plan && !plan.t2Synthetic ? safe(plan.rMultipleT2) : 0;
+    const bestR = plan ? Math.max(t1R, t2R) : Infinity;
     const riskOk = !plan || !Number.isFinite(plan.riskPct) || plan.riskPct <= 0.12;
     const rrOk = !plan || bestR >= 1.2;
     if (ctx.chasing) {

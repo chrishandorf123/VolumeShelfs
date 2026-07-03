@@ -20,8 +20,14 @@ export function tradePlanPanelHtml(plan: TradePlan | null): string {
   const lvl = (k: string, v: number, cls = "") =>
     `<div class="stat"><span class="k">${k}</span><span class="v ${cls}">${formatPrice(v)}</span></div>`;
   const notes = plan.notes.map((n) => `<li>${esc(n)}</li>`).join("");
-  const t1Label = short ? "T1 (demand below)" : plan.isGapPlay ? "T1 (far shelf)" : "T1 (POC/HVN)";
-  const t2Label = short ? "T2 (lower)" : plan.isGapPlay ? "T2 (beyond)" : "T2 (VAH+)";
+  // Synthetic = a bare ±3% marker because no volume level exists there —
+  // never let it wear a label that claims it's a real shelf/POC.
+  const t1Label = plan.t1Synthetic
+    ? "T1 (~3% marker — no level)"
+    : short ? "T1 (demand below)" : plan.isGapPlay ? "T1 (far shelf)" : "T1 (POC/HVN)";
+  const t2Label = plan.t2Synthetic
+    ? "T2 (~3% marker — no level)"
+    : short ? "T2 (lower)" : plan.isGapPlay ? "T2 (beyond)" : "T2 (VAH+)";
   const acct = Number(localStorage.getItem("vs.acct")) || 10000;
   const riskPref = Number(localStorage.getItem("vs.riskpref")) || 1;
   const perShare = perShareRisk(plan);

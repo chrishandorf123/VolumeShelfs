@@ -4,6 +4,10 @@ import type { ScanResult } from "./scanner";
 export interface TradePlan {
   /** Which way the plan makes money. Absent = long (all older plans). */
   side?: "long" | "short";
+  /** True when T1/T2 is a bare percent marker, NOT a real volume level —
+   *  the UI must label these and the buy gate must not trust their R. */
+  t1Synthetic?: boolean;
+  t2Synthetic?: boolean;
   /** True when the plan is driven by an active volume-gap play (the main play). */
   isGapPlay: boolean;
   /** Reclaim trigger: close back above the shelf top / POC into the gap. */
@@ -47,14 +51,26 @@ export function buildTradePlan(result: ScanResult): TradePlan | null {
   const reversalRef = Math.max(support.priceLow, Math.min(val, support.priceHigh));
   let stop = support.priceLow * 0.995;
 
-  // T1: POC if it sits above entry, else the next HVN shelf above.
+  // T1: POC if it sits above entry, else the next HVN shelf above. When no
+  // volume level exists above, the fallback is a bare +3% marker — flag it,
+  // because a percent marker is NOT a real level and must be labeled as such.
   const aboveShelf = result.nearest.above;
+  let t1Synthetic = false;
+  let t2Synthetic = false;
   let t1 = poc > entry ? poc : aboveShelf ? (aboveShelf.priceLow + aboveShelf.priceHigh) / 2 : vah;
-  if (!(t1 > entry)) t1 = vah > entry ? vah : entry * 1.03;
+  if (!(t1 > entry)) {
+    t1Synthetic = !(vah > entry);
+    t1 = vah > entry ? vah : entry * 1.03;
+  }
 
   // T2: VAH, then beyond it.
   let t2 = vah > t1 ? vah : aboveShelf ? aboveShelf.priceHigh : t1 * 1.03;
-  if (!(t2 > t1)) t2 = t1 * 1.03;
+  if (!(t2 > t1)) {
+    t2 = t1 * 1.03;
+    t2Synthetic = true;
+  } else if (!(vah > t1) && !aboveShelf) {
+    t2Synthetic = true;
+  }
 
   // Air pocket: the next low-volume gap above VAH (price travels fast there).
   const gaps = detectGaps(profile, { shelfThreshold: 0.55, gapThreshold: 0.15 });
@@ -70,8 +86,13 @@ export function buildTradePlan(result: ScanResult): TradePlan | null {
     entry = gapPlay.entry;
     stop = gapPlay.stop;
     t1 = gapPlay.target;
+    t1Synthetic = false; // the gap target is a real level (the far shelf)
+    t2Synthetic = !gapPlay.targetShelf;
     t2 = gapPlay.targetShelf ? gapPlay.targetShelf.priceHigh : Math.max(t2, gapPlay.target * 1.03);
-    if (!(t2 > t1)) t2 = t1 * 1.03;
+    if (!(t2 > t1)) {
+      t2 = t1 * 1.03;
+      t2Synthetic = true;
+    }
     airPocket = (gapPlay.gap.priceLow + gapPlay.gap.priceHigh) / 2;
   }
 
@@ -96,9 +117,15 @@ export function buildTradePlan(result: ScanResult): TradePlan | null {
   if (!result.pocBelowPrice) notes.push("POC is above price (overhead supply); treat longs cautiously.");
   if (airPocket !== null && !isGapPlay)
     notes.push(`Volume gap near ${airPocket.toFixed(2)} — expect fast travel through it.`);
+  if (t1Synthetic || t2Synthetic)
+    notes.push(
+      `${t1Synthetic ? "T1" : "T2"}${t1Synthetic && t2Synthetic ? " and T2 are" : " is a"} bare percent marker${t1Synthetic && t2Synthetic ? "s" : ""} — no volume level found there; treat the target as soft.`,
+    );
 
   return {
     side: "long",
+    t1Synthetic,
+    t2Synthetic,
     isGapPlay,
     entry,
     reversalRef,
@@ -133,13 +160,26 @@ export function buildShortPlan(result: ScanResult): TradePlan | null {
   const stop = supply.priceHigh * 1.005; // beyond the overhead shelf
   const reversalRef = supply.priceLow;
 
-  // T1: the nearest demand shelf below (its top), else VAL, else a 3% marker.
+  // T1: the nearest demand shelf below (its top), else VAL, else a 3% marker —
+  // flagged synthetic, because a percent marker is not a real level.
   const below = result.nearest.below;
+  let t1Synthetic = false;
+  let t2Synthetic = false;
   let t1 = below && below.priceHigh < entry ? below.priceHigh : val < entry ? val : entry * 0.97;
-  if (!(t1 < entry)) t1 = entry * 0.97;
+  if (!(t1 < entry)) {
+    t1 = entry * 0.97;
+    t1Synthetic = true;
+  } else if (!(below && below.priceHigh < entry) && !(val < entry)) {
+    t1Synthetic = true;
+  }
   // T2: through the demand shelf / below the value area.
   let t2 = below && below.priceLow < t1 ? below.priceLow : t1 * 0.97;
-  if (!(t2 < t1)) t2 = t1 * 0.97;
+  if (!(t2 < t1)) {
+    t2 = t1 * 0.97;
+    t2Synthetic = true;
+  } else if (!(below && below.priceLow < t1)) {
+    t2Synthetic = true;
+  }
 
   // Air pocket below: fast travel once support goes.
   const gaps = detectGaps(profile, { shelfThreshold: 0.55, gapThreshold: 0.15 });
@@ -160,9 +200,13 @@ export function buildShortPlan(result: ScanResult): TradePlan | null {
     "Shorts move fast and squeeze faster — size smaller than a long, and never short a stage-2 uptrend.",
   ];
   if (airPocket !== null) notes.push(`Volume gap near ${airPocket.toFixed(2)} below — expect fast downside travel through it.`);
+  if (t1Synthetic || t2Synthetic)
+    notes.push("Some targets are bare percent markers (no demand level found there) — treat them as soft.");
 
   return {
     side: "short",
+    t1Synthetic,
+    t2Synthetic,
     isGapPlay: false,
     entry,
     reversalRef,

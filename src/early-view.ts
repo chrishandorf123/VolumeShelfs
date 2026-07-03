@@ -41,7 +41,9 @@ export function earlyPillHtml(sig: EarlySignal | null): string {
 
 /** Full checklist panel: which stealth tells are firing and why. */
 export function earlyPanelHtml(sig: EarlySignal | null, weekly?: EarlySignal | null): string {
-  if (!sig) return "";
+  if (!sig)
+    return `<div class="panel early-panel"><h2 data-glossary="early-signal" title="Click to learn">🕵️ Early signal</h2>
+      <div class="empty">Needs ~60 bars of history — this name is unscreened for stealth accumulation.</div></div>`;
   const rows = sig.components
     .map(
       (c) => `<div class="gate-row ${c.pass ? "pass" : "fail"}">
