@@ -14,6 +14,7 @@ import {
   DEFAULT_BACKTEST_CONFIG,
   buildTables,
   decide,
+  nextSteps,
   recommend,
   recoContextFromScan,
   runBacktest,
@@ -30,6 +31,7 @@ import { PROVIDERS, getProvider, parseCsv, type Interval } from "./data";
 import { formatPrice, formatVolume } from "./chart/scale";
 import { initScanner } from "./scanner-ui";
 import { initGuide } from "./guide";
+import { coachPanelHtml } from "./coach-view";
 import { recoPanelHtml } from "./reco-view";
 import { confirmationPanelHtml, confluencePanelHtml, thesisPanelHtml } from "./thesis-view";
 import { tradePlanPanelHtml, wirePositionSizer } from "./trade-view";
@@ -461,6 +463,7 @@ function renderExploreReco(r: ScanResult | null): void {
   const reco = recommend({ ...recoContextFromScan(r), rsOk: null }, plan);
   els.exploreReco.innerHTML =
     recoPanelHtml(reco) +
+    coachPanelHtml(nextSteps(reco, plan, r.price)) +
     confluencePanelHtml(r.confluence) +
     thesisPanelHtml(buildThesis(r)) +
     confirmationPanelHtml(r.confirmation) +

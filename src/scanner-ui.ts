@@ -8,6 +8,8 @@ import {
   defaultAnchorIndex,
   detectGaps,
   monitorRow,
+  nextSteps,
+  pickTop,
   recoContextFromScan,
   recommend,
   scanTicker,
@@ -16,7 +18,9 @@ import {
   sortMonitorRows,
   type ChosenAnchor,
   type MonitorRow,
+  type MonitorStatus,
   type ProfileAnalysis,
+  type Recommendation,
   type ScanConfig,
   type ScanInput,
   type ScanResult,
@@ -29,6 +33,7 @@ import { buildDemoBenchmark, buildDemoUniverse } from "./data/universe";
 import { marketUniverse } from "./data/marketUniverse";
 import { Pacer, minIntervalMs } from "./data/rateLimit";
 import { GATE_GLOSSARY } from "./glossary";
+import { coachPanelHtml } from "./coach-view";
 import { recoPanelHtml } from "./reco-view";
 import { confirmationPanelHtml, confluencePanelHtml, thesisPanelHtml } from "./thesis-view";
 import { tradePlanPanelHtml, wirePositionSizer } from "./trade-view";
@@ -126,8 +131,24 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     monitorMeta: $("monitorMeta"),
     monitorBody: $("monitorBody"),
     monitorAuto: $<HTMLInputElement>("monitorAuto"),
+    monitorNotify: $<HTMLInputElement>("monitorNotify"),
     monitorNow: $<HTMLButtonElement>("monitorNow"),
+    digest: $("digest"),
+    flowStrip: $("flowStrip"),
   };
+
+  // Reco + plan are needed by the table, digest, CSV export and monitor; compute
+  // each ticker's once per ranking pass instead of once per consumer.
+  let recoCache = new Map<string, { reco: Recommendation; plan: TradePlan | null }>();
+  function recoOf(r: ScanResult): { reco: Recommendation; plan: TradePlan | null } {
+    let c = recoCache.get(r.ticker);
+    if (!c) {
+      const plan = buildTradePlan(r);
+      c = { reco: recommend(recoContextFromScan(r), plan), plan };
+      recoCache.set(r.ticker, c);
+    }
+    return c;
+  }
 
   const tickerList = () =>
     els.tickers.value.split(/[\s,;]+/).map((s) => s.trim().toUpperCase()).filter(Boolean);
@@ -256,10 +277,51 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
   els.runScan.addEventListener("click", () => void run());
   els.exportCsv.addEventListener("click", exportResultsCsv);
   els.monitorNow.addEventListener("click", () => void runMonitor());
+  els.monitorAuto.checked = localStorage.getItem("vs.monAuto") === "1";
   els.monitorAuto.addEventListener("change", () => {
+    localStorage.setItem("vs.monAuto", els.monitorAuto.checked ? "1" : "0");
     if (els.monitorAuto.checked) void runMonitor();
     else stopMonitorTimer();
   });
+  els.monitorNotify.addEventListener("change", () => {
+    if (!els.monitorNotify.checked) return;
+    if (typeof Notification === "undefined") {
+      els.monitorNotify.checked = false;
+      setStatus("This browser doesn't support notifications.", "error");
+      return;
+    }
+    if (Notification.permission === "denied") {
+      els.monitorNotify.checked = false;
+      setStatus("Notifications are blocked in the browser settings.", "error");
+    } else if (Notification.permission === "default") {
+      void Notification.requestPermission().then((p) => {
+        if (p !== "granted") {
+          els.monitorNotify.checked = false;
+          setStatus("Notifications not allowed — trigger alerts will only show in the app.", "error");
+        }
+      });
+    }
+  });
+  $("flowHide").addEventListener("click", () => {
+    localStorage.setItem("vs.flowHidden", "1");
+    els.flowStrip.hidden = true;
+  });
+  updateFlowStrip();
+
+  /** Highlight where the user is in the scan → review → plan → monitor loop. */
+  function updateFlowStrip(): void {
+    if (localStorage.getItem("vs.flowHidden") === "1") {
+      els.flowStrip.hidden = true;
+      return;
+    }
+    els.flowStrip.hidden = false;
+    const step = results.length === 0 ? 1 : lastStatuses.size > 0 ? 4 : selected ? 3 : 2;
+    els.flowStrip.querySelectorAll<HTMLElement>(".fs-step").forEach((el) => {
+      const n = Number(el.dataset.step);
+      el.classList.toggle("done", n < step);
+      el.classList.toggle("now", n === step);
+    });
+  }
 
   // ---- run ---------------------------------------------------------------
   let lastInputs: ScanInput[] = [];
@@ -331,11 +393,66 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
 
   function rankAndRender(): void {
     results = scanUniverse(lastInputs, lastBenchmark, config);
+    recoCache = new Map(); // results changed — recompute recos lazily
     renderTable();
+    renderDigest();
     if (results.length > 0) {
       const stillThere = selected && results.find((r) => r.ticker === selected);
       select(stillThere ? selected! : results[0].ticker);
     }
+    updateFlowStrip();
+  }
+
+  // ---- "top trades right now" digest --------------------------------------
+  // The guided answer to "what should I look at?": the best 3 actionable names
+  // by verdict → gates → confidence → confluence → score, each with its call
+  // and plan. Click a card to open the full detail.
+  function renderDigest(): void {
+    const picks = pickTop(
+      results.map((r) => {
+        const { reco } = recoOf(r);
+        return {
+          ticker: r.ticker,
+          verdict: reco.verdict,
+          confidence: reco.confidence,
+          score: r.score,
+          passedAll: r.passedAll,
+          confluencePassed: r.confluence.passed,
+        };
+      }),
+      3,
+    );
+    if (picks.length === 0) {
+      els.digest.innerHTML = "";
+      return;
+    }
+    const medals = ["①", "②", "③"];
+    const cards = picks
+      .map((p, i) => {
+        const r = results.find((x) => x.ticker === p.ticker)!;
+        const { reco, plan } = recoOf(r);
+        const planLine = plan
+          ? `<div class="dg-plan">Entry <b>${formatPrice(plan.entry)}</b> · Stop <b>${formatPrice(plan.stop)}</b> · T1 <b>${formatPrice(plan.t1)}</b> (${plan.rMultipleT1.toFixed(1)}R)</div>`
+          : "";
+        return `<button class="dg-card dg-${reco.verdict}" data-ticker="${p.ticker}" type="button">
+          <div class="dg-top"><span class="dg-medal">${medals[i] ?? ""}</span><span class="dg-tk">${p.ticker}</span>
+            <span class="reco-chip reco-${reco.verdict}">${reco.label}</span>
+            ${r.passedAll ? '<span class="apex-badge">A+</span>' : ""}</div>
+          <div class="dg-line">${escapeHtml(reco.headline)}</div>
+          ${planLine}
+        </button>`;
+      })
+      .join("");
+    const anyBuy = picks.some((p) => p.verdict === "buy" || p.verdict === "buy-dip");
+    const heading = anyBuy
+      ? "Top trades right now"
+      : "Nothing actionable yet — best names to stalk";
+    els.digest.innerHTML = `<div class="digest-head"><h3>${heading}</h3>
+      <span class="muted">ranked by verdict → gates → confidence → confluence</span></div>
+      <div class="digest-cards">${cards}</div>`;
+    els.digest.querySelectorAll<HTMLButtonElement>(".dg-card").forEach((card) => {
+      card.addEventListener("click", () => select(card.dataset.ticker!));
+    });
   }
 
   // ---- results table -----------------------------------------------------
@@ -350,7 +467,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
         const gates = GATE_ORDER.map(
           (g) => `<span class="gate ${r.gates[g].pass ? "on" : "off"}" title="${GATE_SHORT[g]}: ${escapeHtml(r.gates[g].detail)}">${GATE_SHORT[g]}</span>`,
         ).join("");
-        const reco = recommend(recoContextFromScan(r), buildTradePlan(r));
+        const { reco } = recoOf(r);
         const shelf = r.supportShelf
           ? `${r.supportShelf.priceLow.toFixed(2)}–${r.supportShelf.priceHigh.toFixed(2)} <span class="muted">${r.supportShelf.strength.toFixed(1)}×</span>`
           : "<span class='muted'>—</span>";
@@ -388,7 +505,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
       "Price", "Shelf", "Strength", "RS3mo%", "Reversion", "Chasing",
     ];
     const body = rows.map((r, i) => {
-      const reco = recommend(recoContextFromScan(r), buildTradePlan(r));
+      const { reco } = recoOf(r);
       const shelf = r.supportShelf
         ? `${r.supportShelf.priceLow.toFixed(2)}-${r.supportShelf.priceHigh.toFixed(2)}`
         : "";
@@ -420,6 +537,32 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
   let monitorTimer: number | null = null;
   let monitorRunning = false;
 
+  // Status-change alerts: remember each name's last status so a pass can flag
+  // transitions (WATCH → TRIGGERED etc.), flash the row and optionally notify.
+  const lastStatuses = new Map<string, MonitorStatus>();
+  const changedThisPass = new Set<string>();
+  const alertsFeed: Array<{ time: string; symbol: string; from: MonitorStatus; to: MonitorStatus; note: string }> = [];
+  const ALERTABLE: ReadonlySet<MonitorStatus> = new Set(["APPROACHING", "TRIGGERED", "T1", "T2", "STOPPED"]);
+
+  function trackStatusChange(row: MonitorRow): void {
+    const prev = lastStatuses.get(row.symbol);
+    lastStatuses.set(row.symbol, row.status);
+    // Only alert on a *transition* into an actionable state — the first pass
+    // (prev undefined) just establishes the baseline quietly.
+    if (prev === undefined || prev === row.status || !ALERTABLE.has(row.status)) return;
+    changedThisPass.add(row.symbol);
+    const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    alertsFeed.unshift({ time, symbol: row.symbol, from: prev, to: row.status, note: row.note });
+    if (alertsFeed.length > 20) alertsFeed.length = 20;
+    maybeNotify(row);
+  }
+
+  function maybeNotify(row: MonitorRow): void {
+    if (!els.monitorNotify.checked || typeof Notification === "undefined") return;
+    if (Notification.permission !== "granted") return;
+    new Notification(`${row.symbol} → ${row.status}`, { body: row.note });
+  }
+
   function syncMonitorVisibility(): void {
     els.monitorSection.hidden = source !== "live";
     if (source !== "live") stopMonitorTimer();
@@ -444,7 +587,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
   function monitorTargets(): Array<{ symbol: string; plan: TradePlan }> {
     const out: Array<{ symbol: string; plan: TradePlan }> = [];
     for (const r of results) {
-      const plan = buildTradePlan(r);
+      const { plan } = recoOf(r);
       if (plan) out.push({ symbol: r.ticker, plan });
       if (out.length >= MONITOR_MAX) break;
     }
@@ -476,6 +619,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     monitorRunning = true;
     els.monitorNow.disabled = true;
     stopMonitorTimer();
+    changedThisPass.clear();
     const callsPerMin = Math.max(1, Math.min(1200, Number(els.callsPerMin.value) || 75));
     const pacer = new Pacer(minIntervalMs(callsPerMin));
     const rows: MonitorRow[] = [];
@@ -486,7 +630,9 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
         els.monitorMeta.textContent = `checking ${targets[i].symbol} (${i + 1}/${targets.length})…`;
         try {
           const q = await provider.fetchQuote(targets[i].symbol, apiKey || undefined);
-          rows.push(monitorRow(q, targets[i].plan));
+          const row = monitorRow(q, targets[i].plan);
+          rows.push(row);
+          trackStatusChange(row);
         } catch {
           failed += 1; // skip a failed quote; surfaced in the count
         }
@@ -497,6 +643,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
         `Monitor: ${rows.length} quoted${failed ? `, ${failed} skipped` : ""} · ${triggered} at/near a trigger.`,
         "ok",
       );
+      updateFlowStrip();
     } finally {
       monitorRunning = false;
       els.monitorNow.disabled = false;
@@ -526,7 +673,8 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
         const chg = r.changePct >= 0 ? "pos" : "neg";
         const asOf = r.asOf ? ` title="${r.live ? "live" : "prior close"} · as of ${escapeHtml(r.asOf)}"` : "";
         const dot = r.live ? '<span class="mon-live" title="live intraday print">●</span> ' : "";
-        return `<tr data-ticker="${r.symbol}" class="mon-row mon-${cls}">
+        const flash = changedThisPass.has(r.symbol) ? " mon-changed" : "";
+        return `<tr data-ticker="${r.symbol}" class="mon-row mon-${cls}${flash}">
           <td><span class="mon-badge mon-${cls}">${r.status}</span></td>
           <td class="tk">${r.symbol}</td>
           <td${asOf}>${dot}${formatPrice(r.price)}</td>
@@ -538,7 +686,19 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
         </tr>`;
       })
       .join("");
-    els.monitorBody.innerHTML = `<table class="mon-table">
+    // The alert ribbon: the last few status transitions, newest first, so a
+    // glance answers "what just happened?" even after stepping away.
+    const feed = alertsFeed.length
+      ? `<div class="mon-alerts">${alertsFeed
+          .slice(0, 6)
+          .map(
+            (a) => `<div class="mon-alert"><span class="ma-time">${a.time}</span> <b>${a.symbol}</b>
+              <span class="muted">${a.from} →</span> <span class="mon-badge mon-${a.to.toLowerCase()}">${a.to}</span>
+              <span class="ma-note muted">${escapeHtml(a.note)}</span></div>`,
+          )
+          .join("")}</div>`
+      : "";
+    els.monitorBody.innerHTML = `${feed}<table class="mon-table">
       <thead><tr>
         <th>Status</th><th>Ticker</th><th>Price</th><th>Today</th>
         <th title="Distance to the entry trigger">→Entry</th>
@@ -586,8 +746,13 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     chart.resize();
     chart.setVisibleCount(activeScanTf());
 
+    // Compute the call + plan once for the whole detail render. The override
+    // path builds a fresh ScanResult, so derive from `r` directly (not the cache).
+    const plan = buildTradePlan(r);
+    const reco = recommend(recoContextFromScan(r), plan);
     els.detailPanels.innerHTML =
-      recoPanel(r) +
+      recoPanelHtml(reco) +
+      coachPanelHtml(nextSteps(reco, plan, r.price)) +
       confluencePanelHtml(r.confluence) +
       mainPlayPanel(r) +
       thesisPanelHtml(buildThesis(r)) +
@@ -595,7 +760,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
       avwapPanel(r) +
       confirmationPanelHtml(r.confirmation) +
       gatesPanel(r) +
-      tradePlanPanelHtml(buildTradePlan(r)) +
+      tradePlanPanelHtml(plan) +
       checklistPanel(r);
 
     // Wire the "try the other anchor" toggle.
@@ -612,7 +777,8 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     });
 
     // Wire the risk-based position sizer (recompute shares live, persist inputs).
-    wirePositionSizer(els.detailPanels, buildTradePlan(r));
+    wirePositionSizer(els.detailPanels, plan);
+    updateFlowStrip();
   }
 
   function anchorPanel(r: ScanResult): string {
@@ -632,10 +798,6 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     return `<div class="panel"><h2 data-glossary="anchor" title="What is an anchor? Click to learn">Why this anchor</h2>
       <p class="coach-why">${escapeHtml(why)}</p>
       <div class="coach-btns">${toggle}</div></div>`;
-  }
-
-  function recoPanel(r: ScanResult): string {
-    return recoPanelHtml(recommend(recoContextFromScan(r), buildTradePlan(r)));
   }
 
   function mainPlayPanel(r: ScanResult): string {

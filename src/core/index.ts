@@ -19,3 +19,4 @@ export * from "./backtest";
 export * from "./probabilityTable";
 export * from "./decide";
 export * from "./monitor";
+export * from "./coach";

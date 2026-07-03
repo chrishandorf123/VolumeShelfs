@@ -125,6 +125,17 @@
       </div>
 
       <div id="view-scanner" hidden>
+        <div class="flow-strip" id="flowStrip">
+          <span class="fs-title">Your workflow</span>
+          <span class="fs-step" data-step="1"><b>1</b> Scan the market</span>
+          <span class="fs-arrow" aria-hidden="true">→</span>
+          <span class="fs-step" data-step="2"><b>2</b> Review the top picks</span>
+          <span class="fs-arrow" aria-hidden="true">→</span>
+          <span class="fs-step" data-step="3"><b>3</b> Follow the plan &amp; next steps</span>
+          <span class="fs-arrow" aria-hidden="true">→</span>
+          <span class="fs-step" data-step="4"><b>4</b> Monitor live for triggers</span>
+          <button id="flowHide" class="fs-hide" aria-label="Hide this guide" title="Hide">✕</button>
+        </div>
         <section class="controls scanner-controls">
           <div class="control">
             <label>Universe</label>
@@ -175,6 +186,7 @@
             <h3>Live monitor <span class="tk-count" id="monitorMeta"></span></h3>
             <div class="monitor-actions">
               <label class="chk"><input type="checkbox" id="monitorAuto" /> Auto-refresh</label>
+              <label class="chk" title="Browser notification when a name changes status (hits its trigger, target or stop)"><input type="checkbox" id="monitorNotify" /> Notify</label>
               <button id="monitorNow" class="ghost" type="button" title="Fetch a current quote (1 call each, paced to your calls/min) for the ranked watchlist and show live distance to each plan's entry/stop/T1">Check prices now</button>
             </div>
           </div>
@@ -196,6 +208,7 @@
 
         <main class="scanner-workspace">
           <div class="results-pane">
+            <div class="digest" id="digest"></div>
             <table class="results" id="resultsTable">
               <thead>
                 <tr>

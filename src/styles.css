@@ -1602,3 +1602,227 @@ table.mon-table td.mon-note {
   font-size: 8px;
   vertical-align: middle;
 }
+
+/* ---- guided workflow strip ---- */
+.flow-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(90deg, rgba(91, 141, 239, 0.08), transparent 70%);
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+.fs-title {
+  color: var(--muted);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 10.5px;
+  letter-spacing: 0.5px;
+}
+.fs-step {
+  color: var(--muted);
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+}
+.fs-step b {
+  display: inline-block;
+  width: 15px;
+  height: 15px;
+  line-height: 15px;
+  text-align: center;
+  border-radius: 50%;
+  background: var(--border);
+  color: var(--text);
+  font-size: 10px;
+  margin-right: 4px;
+}
+.fs-step.now {
+  color: var(--text);
+  border-color: var(--accent);
+  background: rgba(91, 141, 239, 0.12);
+}
+.fs-step.now b {
+  background: var(--accent);
+  color: #fff;
+}
+.fs-step.done {
+  color: var(--up);
+}
+.fs-step.done b {
+  background: var(--up);
+  color: #06241f;
+}
+.fs-arrow {
+  color: var(--muted);
+}
+.fs-hide {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+}
+.fs-hide:hover {
+  color: var(--text);
+}
+
+/* ---- top-trades digest ---- */
+.digest:empty {
+  display: none;
+}
+.digest {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+.digest-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.digest-head h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+}
+.digest-head .muted {
+  font-size: 10.5px;
+}
+.digest-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+}
+.dg-card {
+  text-align: left;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  color: var(--text);
+  font: inherit;
+  transition: border-color 0.15s;
+}
+.dg-card:hover {
+  border-color: var(--accent);
+}
+.dg-card.dg-buy,
+.dg-card.dg-buy-dip {
+  border-left: 3px solid var(--up);
+}
+.dg-card.dg-wait {
+  border-left: 3px solid #f5c842;
+}
+.dg-card.dg-watch {
+  border-left: 3px solid var(--muted);
+}
+.dg-top {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 4px;
+}
+.dg-medal {
+  color: var(--accent);
+  font-size: 14px;
+}
+.dg-tk {
+  font-weight: 800;
+  font-size: 13.5px;
+}
+.dg-line {
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.dg-plan {
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--text);
+}
+
+/* ---- next-steps coach ---- */
+.coach-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.coach-step {
+  display: grid;
+  grid-template-columns: 18px 62px 1fr;
+  gap: 7px;
+  align-items: start;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.cs-n {
+  width: 17px;
+  height: 17px;
+  line-height: 17px;
+  text-align: center;
+  border-radius: 50%;
+  background: var(--border);
+  font-size: 10px;
+  font-weight: 700;
+}
+.cs-kind {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding-top: 2px;
+}
+.coach-do .cs-kind {
+  color: var(--up);
+}
+.coach-wait .cs-kind {
+  color: #f5c842;
+}
+.coach-risk .cs-kind {
+  color: var(--down);
+}
+.cs-text {
+  color: var(--text);
+}
+
+/* ---- monitor alerts ---- */
+.mon-alerts {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: rgba(245, 200, 66, 0.05);
+}
+.mon-alert {
+  font-size: 11.5px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.ma-time {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 10.5px;
+}
+.ma-note {
+  font-size: 10.5px;
+}
+@keyframes monFlash {
+  0% { background: rgba(245, 200, 66, 0.28); }
+  100% { background: transparent; }
+}
+.mon-row.mon-changed {
+  animation: monFlash 2.4s ease-out 1;
+}
