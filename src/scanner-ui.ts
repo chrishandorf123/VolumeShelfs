@@ -6,10 +6,14 @@ import {
   buildTradePlan,
   defaultAnchorHighIndex,
   defaultAnchorIndex,
+  closePosition,
   detectGaps,
+  journalStats,
+  markToMarket,
   monitorRow,
   nextSteps,
   pickTop,
+  positionAdvice,
   recoContextFromScan,
   recommend,
   rescoreUniverse,
@@ -30,7 +34,8 @@ import {
 } from "./core";
 import { VolumeShelfsChart, type ChartModel, type SeriesOverlay } from "./chart/chart";
 import { formatPrice, formatVolume } from "./chart/scale";
-import { PROVIDERS, getProvider, type Interval } from "./data";
+import { PROVIDERS, getProvider, type Interval, type Quote } from "./data";
+import { loadPositions, removePosition, updatePosition } from "./journal-store";
 import { buildDemoBenchmark, buildDemoUniverse } from "./data/universe";
 import { marketUniverse } from "./data/marketUniverse";
 import { Pacer, minIntervalMs } from "./data/rateLimit";
@@ -38,6 +43,7 @@ import { GATE_GLOSSARY } from "./glossary";
 import { coachPanelHtml } from "./coach-view";
 import { recoPanelHtml } from "./reco-view";
 import { shannonPanelHtml } from "./shannon-view";
+import { wireTrackButton } from "./trade-view";
 import { confirmationPanelHtml, confluencePanelHtml, thesisPanelHtml } from "./thesis-view";
 import { tradePlanPanelHtml, wirePositionSizer } from "./trade-view";
 
@@ -142,6 +148,10 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     monitorNow: $<HTMLButtonElement>("monitorNow"),
     digest: $("digest"),
     flowStrip: $("flowStrip"),
+    positionsSection: $("positionsSection"),
+    posMeta: $("posMeta"),
+    posStats: $("posStats"),
+    positionsBody: $("positionsBody"),
   };
 
   // ONE pacer for ALL provider traffic (scan passes, monitor quotes and any
@@ -688,6 +698,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
           // The pace hook lets the provider take a fresh slot if a quote needs
           // a second HTTP request (e.g. the GLOBAL_QUOTE fallback).
           const q = await provider.fetchQuote(targets[i].symbol, apiKey || undefined, () => sharedPacer.wait());
+          lastQuotes.set(q.symbol, q);
           const row = monitorRow(q, targets[i].plan);
           rows.push(row);
           trackStatusChange(row);
@@ -698,9 +709,28 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
           });
         }
       }
+      // Also mark any OPEN journal positions whose symbols weren't in the
+      // ranked watchlist — the journal deserves live prices too.
+      const posOnly = [...new Set(
+        loadPositions()
+          .filter((p) => p.status === "open")
+          .map((p) => p.symbol),
+      )].filter((s) => !targets.some((t) => t.symbol === s));
+      for (const sym of posOnly) {
+        if (!viewActive || source !== "live") break;
+        await sharedPacer.wait();
+        els.monitorMeta.textContent = `marking position ${sym}…`;
+        try {
+          const q = await provider.fetchQuote(sym, apiKey || undefined, () => sharedPacer.wait());
+          lastQuotes.set(q.symbol, q);
+        } catch (err) {
+          failures.push({ symbol: sym, message: err instanceof Error ? err.message : String(err) });
+        }
+      }
       // Render once per pass (progress lives in the meta line above) — a
       // per-quote rebuild is O(n²) DOM work for no extra information.
       renderMonitor(sortMonitorRows(rows), failures, targets.length);
+      renderPositions(); // open positions just got fresh marks
       const triggered = rows.filter((r) => r.status === "TRIGGERED" || r.status === "APPROACHING").length;
       setStatus(
         `Monitor: ${rows.length} quoted${failures.length ? `, ${failures.length} skipped` : ""} · ${triggered} at/near a trigger.`,
@@ -793,6 +823,101 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     // Row clicks use one delegated listener (wired at init) — no per-render churn.
   }
 
+  // ---- positions journal ---------------------------------------------------
+  // Trades the user chose to track ("📌 Track this trade"): live P&L in R,
+  // what to do with each one now, and the running expectancy of following the
+  // system — the feedback loop that tells you whether the edge is real.
+  const lastQuotes = new Map<string, Quote>();
+
+  const fmtR = (r: number) => (Number.isFinite(r) ? `${r >= 0 ? "+" : ""}${r.toFixed(2)}R` : "—");
+
+  /** Best known current price for a symbol: live quote, else the scan's close. */
+  function priceFor(symbol: string): number {
+    const q = lastQuotes.get(symbol);
+    if (q) return q.price;
+    const r = results.find((x) => x.ticker === symbol);
+    return r ? r.price : NaN;
+  }
+
+  function renderPositions(): void {
+    const positions = loadPositions();
+    els.positionsSection.hidden = positions.length === 0;
+    if (positions.length === 0) return;
+    const stats = journalStats(positions);
+    els.posMeta.textContent = stats.open
+      ? `${stats.open} open · $${stats.openRisk.toFixed(0)} at risk`
+      : `${stats.open} open`;
+    els.posStats.textContent = stats.closed
+      ? `${stats.closed} closed${Number.isFinite(stats.winRate) ? ` · ${(stats.winRate * 100).toFixed(0)}% win` : ""} · expectancy ${fmtR(stats.expectancyR)} · total ${fmtR(stats.totalR)}`
+      : "";
+
+    const open = positions.filter((p) => p.status === "open");
+    const closed = positions.filter((p) => p.status === "closed").slice(-10).reverse();
+    const rowsHtml = [...open, ...closed]
+      .map((p) => {
+        const isOpen = p.status === "open";
+        const price = isOpen ? priceFor(p.symbol) : p.exitPrice!;
+        const m = Number.isFinite(price) ? markToMarket(p, price) : null;
+        const date = new Date(p.openedAt).toISOString().slice(0, 10);
+        const badge = isOpen
+          ? '<span class="mon-badge mon-triggered">OPEN</span>'
+          : m && m.r > 0.05
+            ? '<span class="mon-badge mon-t1">WIN</span>'
+            : m && m.r < -0.05
+              ? '<span class="mon-badge mon-stopped">LOSS</span>'
+              : '<span class="mon-badge mon-watch">FLAT</span>';
+        const pnlCls = m && m.pnl > 0 ? "pos" : m && m.pnl < 0 ? "neg" : "";
+        const read = isOpen
+          ? Number.isFinite(price)
+            ? positionAdvice(p, price)
+            : "No price yet — run the monitor to mark it."
+          : `Closed at ${formatPrice(p.exitPrice!)}.`;
+        const actions = isOpen
+          ? `<button class="ghost pos-close" type="button" data-close="${p.id}" title="Close the position at a price you enter (defaults to the last known)">Close</button>`
+          : "";
+        return `<tr class="mon-row">
+          <td>${badge}</td>
+          <td class="tk">${p.symbol}</td>
+          <td class="muted">${date}</td>
+          <td>${formatPrice(p.entry)} × ${p.shares}</td>
+          <td class="neg">${formatPrice(p.stop)}</td>
+          <td>${Number.isFinite(price) ? formatPrice(price) : "—"}</td>
+          <td class="${pnlCls}">${m ? `$${m.pnl.toFixed(0)} · ${fmtR(m.r)}` : "—"}</td>
+          <td class="mon-note muted">${escapeHtml(read)}</td>
+          <td>${actions}<button class="ghost pos-del" type="button" data-del="${p.id}" title="Remove from the journal (does not affect stats of other rows)">✕</button></td>
+        </tr>`;
+      })
+      .join("");
+    els.positionsBody.innerHTML = `<table class="mon-table">
+      <thead><tr>
+        <th></th><th>Ticker</th><th>Opened</th><th>Entry × sh</th><th>Stop</th>
+        <th>Last / Exit</th><th title="Open (or realized) P&L in dollars and in R — units of the initial risk">P&L</th>
+        <th>Read</th><th></th>
+      </tr></thead><tbody>${rowsHtml}</tbody></table>`;
+  }
+
+  // One delegated listener for close/remove clicks across every re-render.
+  els.positionsBody.addEventListener("click", (e) => {
+    const t = e.target as HTMLElement;
+    const closeId = t.closest<HTMLElement>("[data-close]")?.dataset.close;
+    const delId = t.closest<HTMLElement>("[data-del]")?.dataset.del;
+    if (closeId) {
+      const p = loadPositions().find((x) => x.id === closeId);
+      if (!p) return;
+      const dflt = priceFor(p.symbol);
+      const raw = window.prompt(`Close ${p.symbol} — exit price:`, Number.isFinite(dflt) ? dflt.toFixed(2) : "");
+      const exit = Number(raw);
+      if (raw === null || !Number.isFinite(exit) || exit <= 0) return;
+      updatePosition(closePosition(p, exit, Date.now()));
+      renderPositions();
+      setStatus(`${p.symbol} closed at ${formatPrice(exit)}.`, "ok");
+    } else if (delId) {
+      removePosition(delId);
+      renderPositions();
+    }
+  });
+  renderPositions(); // restore the journal from a previous session
+
   // ---- detail ------------------------------------------------------------
   /** Anchor override for the currently open detail (the "try the other anchor" toggle). */
   let detailOverride: ChosenAnchor | null = null;
@@ -865,6 +990,10 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
 
     // Wire the risk-based position sizer (recompute shares live, persist inputs).
     wirePositionSizer(els.detailPanels, plan);
+    wireTrackButton(els.detailPanels, r.ticker, plan, () => {
+      renderPositions();
+      setStatus(`${r.ticker} tracked — it now shows under Positions with live P&L in R.`, "ok");
+    });
     updateFlowStrip();
   }
 

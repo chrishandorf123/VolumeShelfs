@@ -37,7 +37,7 @@ import { coachPanelHtml } from "./coach-view";
 import { recoPanelHtml } from "./reco-view";
 import { shannonPanelHtml } from "./shannon-view";
 import { confirmationPanelHtml, confluencePanelHtml, thesisPanelHtml } from "./thesis-view";
-import { tradePlanPanelHtml, wirePositionSizer } from "./trade-view";
+import { tradePlanPanelHtml, wirePositionSizer, wireTrackButton } from "./trade-view";
 import { modelPanelHtml } from "./model-view";
 
 // ---- DOM helpers -----------------------------------------------------------
@@ -473,6 +473,10 @@ function renderExploreReco(r: ScanResult | null): void {
     confirmationPanelHtml(r.confirmation) +
     tradePlanPanelHtml(plan);
   wirePositionSizer(els.exploreReco, plan);
+  const symbol = els.symbol.value.trim().toUpperCase() || r.ticker;
+  wireTrackButton(els.exploreReco, symbol, plan, () =>
+    setStatus(`${symbol} tracked — see Scanner → Positions for live P&L in R.`, "ok"),
+  );
 }
 
 /** AVWAP line + ±1σ bands, the pinch AVWAPs, 50/200 MA and the trade levels. */

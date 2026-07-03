@@ -1,4 +1,5 @@
-import type { TradePlan } from "./core";
+import { openPosition, type TradePlan } from "./core";
+import { addPosition } from "./journal-store";
 import { formatPrice } from "./chart/scale";
 
 function esc(s: string): string {
@@ -34,6 +35,10 @@ export function tradePlanPanelHtml(plan: TradePlan | null): string {
       <label>Risk % <input class="ps-risk" type="number" min="0" step="0.25" value="${riskPref}" /></label>
       <span class="ps-out">→ <b class="ps-shares">${shares}</b> sh · $<span class="ps-dollar">${(shares * perShare).toFixed(0)}</span> risk</span>
     </div>
+    <div class="track-row">
+      <button class="ps-track ghost" type="button" title="Log this plan as a position in the journal (Scanner → Positions). Tracks P&L in R against live prices — great for paper-trading the system before risking money.">📌 Track this trade</button>
+      <span class="muted track-hint">logs entry/stop/targets · measures the outcome in R</span>
+    </div>
     <ul class="notes">${notes}</ul></div>`;
 }
 
@@ -56,4 +61,26 @@ export function wirePositionSizer(container: HTMLElement, plan: TradePlan | null
   };
   acctIn.addEventListener("input", recalc);
   riskIn.addEventListener("input", recalc);
+}
+
+/**
+ * Wire the "Track this trade" button: opens a journal position at the plan's
+ * trigger, sized from the sizer inputs. `onTracked` lets the caller refresh
+ * its positions panel / status line.
+ */
+export function wireTrackButton(
+  container: HTMLElement,
+  symbol: string,
+  plan: TradePlan | null,
+  onTracked?: () => void,
+): void {
+  const btn = container.querySelector<HTMLButtonElement>(".ps-track");
+  if (!btn || !plan) return;
+  btn.addEventListener("click", () => {
+    const shares = Number(container.querySelector(".ps-shares")?.textContent) || 1;
+    addPosition(openPosition(symbol, plan, shares, Date.now()));
+    btn.disabled = true;
+    btn.textContent = "✓ Tracked";
+    onTracked?.();
+  });
 }

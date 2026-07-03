@@ -231,6 +231,14 @@ export const GLOSSARY: GlossaryEntry[] = [
       "As an uptrend climbs, each pullback sets a higher low, and the AVWAP anchored to that newest low becomes the working support line — the older lows' AVWAPs 'hand off' the job. The handoff is intact while the low-anchored AVWAPs stack upward and price holds above the newest one. If price loses the newest AVWAP, the older ones underneath are the next tests.",
     why: "It gives you a rising, volume-weighted trail for stops and add points that tightens as the trend matures — instead of a stale line from months ago.",
   },
+  {
+    id: "expectancy",
+    term: "Expectancy (R)",
+    short: "Average result per trade, measured in units of what you risked.",
+    plain:
+      "Every tracked trade risks a known amount: entry minus stop, times shares — that's 1R. A trade that makes twice what it risked is +2R; a stop-out is −1R. Expectancy is the average R across all your closed trades in the journal. +0.3R means that following the system earned you, on average, 30% of your risked amount per trade — win rate alone can't tell you that (a 70% win rate with big losses can still lose money).",
+    why: "It's the single number that says whether your process makes money over time. Positive and stable across 20+ trades = a real edge; negative = fix the process before sizing up.",
+  },
 ];
 
 const BY_ID = new Map(GLOSSARY.map((e) => [e.id, e]));

@@ -1963,3 +1963,37 @@ table.mon-table td.mon-note {
 .mon-row.mon-stalerow td {
   opacity: 0.75;
 }
+
+/* ---- trade journal / positions ---- */
+.track-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 8px 0 2px;
+  flex-wrap: wrap;
+}
+.ps-track {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+.ps-track:disabled {
+  color: var(--up);
+  border-color: var(--up);
+  opacity: 1;
+  cursor: default;
+}
+.track-hint {
+  font-size: 10.5px;
+}
+.pos-close,
+.pos-del {
+  font-size: 11px;
+  padding: 2px 7px;
+}
+.pos-del {
+  color: var(--muted);
+  border-color: transparent;
+}
+.pos-del:hover {
+  color: var(--down);
+}

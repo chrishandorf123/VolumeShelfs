@@ -21,3 +21,4 @@ export * from "./decide";
 export * from "./monitor";
 export * from "./coach";
 export * from "./shannon";
+export * from "./journal";
