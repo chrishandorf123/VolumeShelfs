@@ -3,7 +3,7 @@
  * by Claude with the whole method + glossary + live screen state as context.
  * The user's Anthropic key lives in localStorage like the data-provider keys.
  */
-import { askClaude, type ChatTurn } from "./chat/claudeClient";
+import { askClaude, ApiError, type ChatTurn } from "./chat/claudeClient";
 import { buildSystemPrompt, collectLiveContext, trimHistory } from "./chat/context";
 
 const LS_ANTHROPIC_KEY = "vs.key.anthropic";
@@ -82,10 +82,23 @@ export function initChat(): void {
     setBusy(true);
     streaming = new AbortController();
     let full = "";
+    // Screen and history must never diverge: whatever text ends up visible in
+    // the coach bubble is what goes into `turns` (and an empty assistant turn
+    // is never pushed — the API rejects empty content on the next request).
+    const settle = (note?: string) => {
+      if (full.trim()) {
+        out.innerHTML = mdLite(full) + (note ? `<div class="chat-note muted">${esc(note)}</div>` : "");
+        turns.push({ role: "assistant", content: full });
+      } else {
+        if (turns[turns.length - 1]?.role === "user") turns.pop(); // unanswered — retryable
+        if (note) out.innerHTML = `<span class="neg">${esc(note)}</span>`;
+        else out.remove();
+      }
+    };
     try {
       // Fresh snapshot of the screen for every question.
       const system = buildSystemPrompt(collectLiveContext());
-      await askClaude({
+      const reply = await askClaude({
         apiKey: (localStorage.getItem(LS_ANTHROPIC_KEY) ?? "").trim(),
         system,
         messages: trimHistory(turns),
@@ -97,16 +110,18 @@ export function initChat(): void {
           msgs!.scrollTop = msgs!.scrollHeight;
         },
       });
-      out.innerHTML = mdLite(full);
-      turns.push({ role: "assistant", content: full });
+      if (reply.stopReason === "max_tokens") settle("…answer hit the length cap — ask me to continue.");
+      else if (reply.stopReason === "refusal") settle("The model declined this one — try rephrasing.");
+      else settle();
     } catch (err) {
       if ((err as Error).name === "AbortError") {
-        out.innerHTML = mdLite(full ? `${full} …(stopped)` : "(stopped)");
-        // Keep history consistent: drop the unanswered user turn.
-        if (turns[turns.length - 1]?.role === "user") turns.pop();
+        settle(full.trim() ? "(stopped)" : "Stopped before any reply arrived.");
       } else {
-        out.innerHTML = `<span class="neg">${esc(err instanceof Error ? err.message : String(err))}</span>`;
-        if (turns[turns.length - 1]?.role === "user") turns.pop();
+        const msg = err instanceof Error ? err.message : String(err);
+        // Keep whatever streamed; append the error instead of destroying it.
+        settle(msg);
+        // A rejected key needs a way back in — re-open the key input.
+        if (err instanceof ApiError && err.status === 401) keyRow!.hidden = false;
       }
     } finally {
       streaming = null;
@@ -147,10 +162,19 @@ export function initChat(): void {
     void ask(input.value);
   });
   input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    // isComposing: an IME (Japanese/Chinese/Korean…) is committing a candidate
+    // with Enter — that must never send the half-composed message.
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
       if (!streaming) void ask(input.value);
     }
+  });
+
+  // The 🔑 button re-opens the key input any time (fix a mistyped/rotated key).
+  const keyBtn = document.getElementById("chatKeyBtn");
+  keyBtn?.addEventListener("click", () => {
+    keyRow.hidden = !keyRow.hidden;
+    if (!keyRow.hidden) keyInput.focus();
   });
 
   chips.innerHTML = CHIPS.map((c) => `<button class="chat-chip" type="button">${esc(c)}</button>`).join("");

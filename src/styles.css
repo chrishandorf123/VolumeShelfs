@@ -2802,3 +2802,23 @@ table.mon-table thead th.mon-sort:hover {
 table.mon-table thead th.mon-sort.on {
   color: #5b8def;
 }
+
+/* ---- coach fixes (verification pass) ---- */
+.chat-head-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+/* A status line under a coach reply ("hit the length cap", "(stopped)"…). */
+.chat-note {
+  margin-top: 6px;
+  padding-top: 5px;
+  border-top: 1px dashed var(--border);
+  font-size: 10.5px;
+}
+/* The fixed FAB floats over the scrolling panes' bottom-right corner — give
+ * them clearance so the last panel can always scroll out from under it. */
+.sidebar,
+.detail-pane {
+  padding-bottom: 76px;
+}

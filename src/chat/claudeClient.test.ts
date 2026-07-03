@@ -52,3 +52,25 @@ describe("textDeltaOf", () => {
     expect(textDeltaOf({ event: "content_block_delta", data: "{oops" })).toBe("");
   });
 });
+
+describe("CRLF tolerance (SSE spec allows \\r\\n; proxies rewrite to it)", () => {
+  it("parses CRLF-delimited frames identically to LF frames", () => {
+    const chunk =
+      `event: content_block_delta\r\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Hi"}}\r\n\r\n` +
+      `event: message_delta\r\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}\r\n\r\n`;
+    const { events, rest } = parseSseEvents(chunk);
+    expect(events).toHaveLength(2);
+    expect(textDeltaOf(events[0])).toBe("Hi");
+    expect(events[1].event).toBe("message_delta");
+    expect(rest).toBe("");
+  });
+
+  it("handles mixed LF and CRLF in one buffer", () => {
+    const chunk =
+      `event: ping\ndata: {}\r\n\r\n` +
+      `event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"ok"}}\n\n`;
+    const { events } = parseSseEvents(chunk);
+    expect(events).toHaveLength(2);
+    expect(textDeltaOf(events[1])).toBe("ok");
+  });
+});

@@ -21,16 +21,18 @@ export interface SseEvent {
 
 /**
  * Split an SSE buffer into complete events plus the unfinished remainder.
- * Anthropic streams `event: <name>\ndata: <json>\n\n` frames.
+ * Anthropic streams `event: <name>\ndata: <json>\n\n` frames. The SSE spec
+ * allows CRLF line endings (proxies sometimes rewrite to them), so frame and
+ * line splits accept either — LF-only parsing would silently drop the stream.
  */
 export function parseSseEvents(buffer: string): { events: SseEvent[]; rest: string } {
   const events: SseEvent[] = [];
-  const frames = buffer.split("\n\n");
+  const frames = buffer.split(/\r?\n\r?\n/);
   const rest = frames.pop() ?? ""; // last piece may be incomplete
   for (const frame of frames) {
     let event = "";
     const data: string[] = [];
-    for (const line of frame.split("\n")) {
+    for (const line of frame.split(/\r?\n/)) {
       if (line.startsWith("event:")) event = line.slice(6).trim();
       else if (line.startsWith("data:")) data.push(line.slice(5).trim());
     }
@@ -57,6 +59,17 @@ function friendlyError(status: number, apiMessage: string): string {
   return apiMessage || `Anthropic API error (HTTP ${status}).`;
 }
 
+/** API-level failure carrying the HTTP status (401 lets the UI re-open the key input). */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 export interface AskOptions {
   apiKey: string;
   system: string;
@@ -68,8 +81,14 @@ export interface AskOptions {
   signal?: AbortSignal;
 }
 
-/** Stream one reply from Claude; resolves with the full text. */
-export async function askClaude(opts: AskOptions): Promise<string> {
+export interface AskResult {
+  text: string;
+  /** "end_turn" for a complete answer; "max_tokens" = truncated; "refusal" = declined. */
+  stopReason: string | null;
+}
+
+/** Stream one reply from Claude; resolves with the full text + stop reason. */
+export async function askClaude(opts: AskOptions): Promise<AskResult> {
   const res = await fetch(API_URL, {
     method: "POST",
     signal: opts.signal,
@@ -81,7 +100,9 @@ export async function askClaude(opts: AskOptions): Promise<string> {
     },
     body: JSON.stringify({
       model: opts.model ?? DEFAULT_CHAT_MODEL,
-      max_tokens: opts.maxTokens ?? 2000,
+      // Adaptive thinking spends from the same budget as the visible answer,
+      // so leave real headroom — 2000 truncated long answers mid-sentence.
+      max_tokens: opts.maxTokens ?? 6000,
       thinking: { type: "adaptive" },
       stream: true,
       system: opts.system,
@@ -97,7 +118,7 @@ export async function askClaude(opts: AskOptions): Promise<string> {
     } catch {
       /* non-JSON error body */
     }
-    throw new Error(friendlyError(res.status, apiMessage));
+    throw new ApiError(friendlyError(res.status, apiMessage), res.status);
   }
   if (!res.body) throw new Error("The browser could not stream the response.");
 
@@ -105,28 +126,41 @@ export async function askClaude(opts: AskOptions): Promise<string> {
   const decoder = new TextDecoder();
   let buffer = "";
   let full = "";
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const { events, rest } = parseSseEvents(buffer);
-    buffer = rest;
-    for (const ev of events) {
-      if (ev.event === "error") {
-        let msg = "The stream reported an error.";
-        try {
-          msg = JSON.parse(ev.data)?.error?.message ?? msg;
-        } catch {
-          /* keep default */
+  let stopReason: string | null = null;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const { events, rest } = parseSseEvents(buffer);
+      buffer = rest;
+      for (const ev of events) {
+        if (ev.event === "error") {
+          let msg = "The stream reported an error.";
+          try {
+            msg = JSON.parse(ev.data)?.error?.message ?? msg;
+          } catch {
+            /* keep default */
+          }
+          throw new Error(msg);
         }
-        throw new Error(msg);
-      }
-      const text = textDeltaOf(ev);
-      if (text) {
-        full += text;
-        opts.onDelta?.(text);
+        if (ev.event === "message_delta") {
+          try {
+            stopReason = JSON.parse(ev.data)?.delta?.stop_reason ?? stopReason;
+          } catch {
+            /* ignore malformed frame */
+          }
+        }
+        const text = textDeltaOf(ev);
+        if (text) {
+          full += text;
+          opts.onDelta?.(text);
+        }
       }
     }
+  } finally {
+    // On any early exit (stream error, onDelta throw) release the connection.
+    void reader.cancel().catch(() => undefined);
   }
-  return full;
+  return { text: full, stopReason };
 }
