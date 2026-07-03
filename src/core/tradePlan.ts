@@ -2,6 +2,8 @@ import { detectGaps } from "./shelves";
 import type { ScanResult } from "./scanner";
 
 export interface TradePlan {
+  /** Which way the plan makes money. Absent = long (all older plans). */
+  side?: "long" | "short";
   /** True when the plan is driven by an active volume-gap play (the main play). */
   isGapPlay: boolean;
   /** Reclaim trigger: close back above the shelf top / POC into the gap. */
@@ -96,7 +98,72 @@ export function buildTradePlan(result: ScanResult): TradePlan | null {
     notes.push(`Volume gap near ${airPocket.toFixed(2)} — expect fast travel through it.`);
 
   return {
+    side: "long",
     isGapPlay,
+    entry,
+    reversalRef,
+    stop,
+    t1,
+    t2,
+    airPocket,
+    riskPct,
+    rMultipleT1: rT1,
+    rMultipleT2: rT2,
+    notes,
+  };
+}
+
+/**
+ * The mirror image for downtrends (Shannon's short playbook): short the failed
+ * rally into overhead supply — the break-even sellers above — with the stop
+ * beyond the supply shelf and targets at the demand levels below. Returns null
+ * when there's no overhead shelf to lean on (nothing to define the risk).
+ */
+export function buildShortPlan(result: ScanResult): TradePlan | null {
+  const supply = result.nearest.above;
+  if (!supply) return null;
+  const { profile, price } = result;
+  const val = profile.valueArea.low;
+  const poc = profile.poc.mid;
+
+  // Breakdown trigger: the nearer underfoot of {POC, VAL} price must lose —
+  // or current price when it's already lost both (short the rally instead).
+  const breakLevels = [poc, val].filter((v) => v <= price);
+  const entry = breakLevels.length ? Math.max(...breakLevels) : price;
+  const stop = supply.priceHigh * 1.005; // beyond the overhead shelf
+  const reversalRef = supply.priceLow;
+
+  // T1: the nearest demand shelf below (its top), else VAL, else a 3% marker.
+  const below = result.nearest.below;
+  let t1 = below && below.priceHigh < entry ? below.priceHigh : val < entry ? val : entry * 0.97;
+  if (!(t1 < entry)) t1 = entry * 0.97;
+  // T2: through the demand shelf / below the value area.
+  let t2 = below && below.priceLow < t1 ? below.priceLow : t1 * 0.97;
+  if (!(t2 < t1)) t2 = t1 * 0.97;
+
+  // Air pocket below: fast travel once support goes.
+  const gaps = detectGaps(profile, { shelfThreshold: 0.55, gapThreshold: 0.15 });
+  const under = gaps
+    .filter((g) => g.priceHigh <= entry)
+    .sort((a, b) => b.priceHigh - a.priceHigh);
+  const airPocket = under.length ? (under[0].priceLow + under[0].priceHigh) / 2 : null;
+
+  const risk = stop - entry;
+  const riskPct = entry > 0 ? risk / entry : NaN;
+  const rT1 = risk > 0 ? (entry - t1) / risk : NaN;
+  const rT2 = risk > 0 ? (entry - t2) / risk : NaN;
+  if (!(risk > 0)) return null;
+
+  const notes: string[] = [
+    `Short against the ${supply.priceLow.toFixed(2)}–${supply.priceHigh.toFixed(2)} overhead shelf — trapped buyers sell into every rally there.`,
+    `Cover-stop is a decisive close above ${stop.toFixed(2)}; a reclaim of the shelf kills the thesis.`,
+    "Shorts move fast and squeeze faster — size smaller than a long, and never short a stage-2 uptrend.",
+  ];
+  if (airPocket !== null) notes.push(`Volume gap near ${airPocket.toFixed(2)} below — expect fast downside travel through it.`);
+
+  return {
+    side: "short",
+    isGapPlay: false,
     entry,
     reversalRef,
     stop,

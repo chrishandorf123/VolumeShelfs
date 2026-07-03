@@ -6,24 +6,30 @@ function esc(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 }
 
+/** Per-share risk regardless of direction (long: entry−stop; short: stop−entry). */
+function perShareRisk(plan: TradePlan): number {
+  return plan.side === "short" ? plan.stop - plan.entry : plan.entry - plan.stop;
+}
+
 /** Shared trade-plan panel (levels, R:R, a risk-based position sizer, notes). */
 export function tradePlanPanelHtml(plan: TradePlan | null): string {
   if (!plan) {
     return `<div class="panel"><h2>Trade plan</h2><div class="empty">No support shelf — not actionable as a long.</div></div>`;
   }
+  const short = plan.side === "short";
   const lvl = (k: string, v: number, cls = "") =>
     `<div class="stat"><span class="k">${k}</span><span class="v ${cls}">${formatPrice(v)}</span></div>`;
   const notes = plan.notes.map((n) => `<li>${esc(n)}</li>`).join("");
-  const t1Label = plan.isGapPlay ? "T1 (far shelf)" : "T1 (POC/HVN)";
-  const t2Label = plan.isGapPlay ? "T2 (beyond)" : "T2 (VAH+)";
+  const t1Label = short ? "T1 (demand below)" : plan.isGapPlay ? "T1 (far shelf)" : "T1 (POC/HVN)";
+  const t2Label = short ? "T2 (lower)" : plan.isGapPlay ? "T2 (beyond)" : "T2 (VAH+)";
   const acct = Number(localStorage.getItem("vs.acct")) || 10000;
   const riskPref = Number(localStorage.getItem("vs.riskpref")) || 1;
-  const perShare = plan.entry - plan.stop;
+  const perShare = perShareRisk(plan);
   const shares = perShare > 0 ? Math.floor((acct * riskPref) / 100 / perShare) : 0;
-  return `<div class="panel"><h2>Trade plan${plan.isGapPlay ? " · gap play" : ""}</h2>
+  return `<div class="panel"><h2>${short ? "Short plan · downtrend mirror" : `Trade plan${plan.isGapPlay ? " · gap play" : ""}`}</h2>
     <div class="summary">
-      ${lvl("Entry (reclaim)", plan.entry)}
-      ${lvl("Stop (shelf low)", plan.stop, "neg")}
+      ${lvl(short ? "Entry (breakdown)" : "Entry (reclaim)", plan.entry)}
+      ${lvl(short ? "Cover-stop (above shelf)" : "Stop (shelf low)", plan.stop, "neg")}
       ${lvl(t1Label, plan.t1, "pos")}
       ${lvl(t2Label, plan.t2, "pos")}
       <div class="stat"><span class="k">Risk</span><span class="v">${(plan.riskPct * 100).toFixed(1)}%</span></div>
@@ -36,7 +42,7 @@ export function tradePlanPanelHtml(plan: TradePlan | null): string {
       <span class="ps-out">→ <b class="ps-shares">${shares}</b> sh · $<span class="ps-dollar">${(shares * perShare).toFixed(0)}</span> risk</span>
     </div>
     <div class="track-row">
-      <button class="ps-track ghost" type="button" title="Log this plan as a position in the journal (Scanner → Positions). Tracks P&L in R against live prices — great for paper-trading the system before risking money.">📌 Track this trade</button>
+      <button class="ps-track ghost" type="button" title="Log this plan as a position in the journal (Scanner → Positions). Tracks P&L in R against live prices — great for paper-trading the system before risking money.">📌 Track this ${short ? "short" : "trade"}</button>
       <span class="muted track-hint">logs entry/stop/targets · measures the outcome in R</span>
     </div>
     <ul class="notes">${notes}</ul></div>`;
@@ -52,7 +58,7 @@ export function wirePositionSizer(container: HTMLElement, plan: TradePlan | null
     const risk = Math.max(0, Number(riskIn.value) || 0);
     localStorage.setItem("vs.acct", String(acct));
     localStorage.setItem("vs.riskpref", String(risk));
-    const perShare = plan.entry - plan.stop;
+    const perShare = perShareRisk(plan);
     const shares = perShare > 0 ? Math.floor((acct * risk) / 100 / perShare) : 0;
     const sh = container.querySelector(".ps-shares");
     const dl = container.querySelector(".ps-dollar");
@@ -78,7 +84,7 @@ export function wireTrackButton(
   if (!btn || !plan) return;
   btn.addEventListener("click", () => {
     const shares = Number(container.querySelector(".ps-shares")?.textContent) || 1;
-    addPosition(openPosition(symbol, plan, shares, Date.now()));
+    addPosition(openPosition(symbol, plan, shares, Date.now(), plan.entry, plan.side ?? "long"));
     btn.disabled = true;
     btn.textContent = "✓ Tracked";
     onTracked?.();

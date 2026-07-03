@@ -7,8 +7,11 @@ import {
   anchoredVwapBands,
   anchoredVwapSeries,
   buildAvwapMap,
+  buildShortPlan,
   buildThesis,
   buildTradePlan,
+  checkDiscipline,
+  finalCall,
   computeAnchoredProfile,
   defaultAnchorIndex,
   detectSwings,
@@ -26,6 +29,7 @@ import {
   type AnchorCoach,
   type Candle,
   type ChosenAnchor,
+  type MarketRegime,
   type ScanResult,
 } from "./core";
 import { VolumeShelfsChart, type ChartModel, type ChartOverlays } from "./chart/chart";
@@ -36,6 +40,9 @@ import { initGuide } from "./guide";
 import { coachPanelHtml } from "./coach-view";
 import { recoPanelHtml } from "./reco-view";
 import { shannonPanelHtml } from "./shannon-view";
+import { disciplinePanelHtml, finalCallPanelHtml } from "./decision-view";
+import { celebrate } from "./celebrate";
+import { loadPositions } from "./journal-store";
 import { confirmationPanelHtml, confluencePanelHtml, thesisPanelHtml } from "./thesis-view";
 import { tradePlanPanelHtml, wirePositionSizer, wireTrackButton } from "./trade-view";
 import { modelPanelHtml } from "./model-view";
@@ -464,20 +471,62 @@ function renderExploreReco(r: ScanResult | null): void {
   }
   const plan = buildTradePlan(r);
   const reco = recommend({ ...recoContextFromScan(r), rsOk: null }, plan);
+  const shan = state.candles.length ? shannonRead(state.candles) : null;
+
+  // Direction: mirror to the short side in a confirmed downtrend.
+  const bearish = shan?.stage?.stage === 4 || (!r.gates.trend.pass && shan?.mtf.weekly === "down");
+  const side: "long" | "short" = bearish ? "short" : "long";
+  const activePlan = side === "short" ? buildShortPlan(r) : plan;
+
+  // Explore has no benchmark loaded, so the regime is honest about not knowing.
+  const regime: MarketRegime = {
+    light: "unknown",
+    stage: null,
+    weekly: "neutral",
+    detail: "Regime is read from the benchmark in the Scanner — run a scan there for the market light.",
+  };
+  const symbol = els.symbol.value.trim().toUpperCase() || r.ticker;
+  const disc = checkDiscipline({
+    accountSize: Number(localStorage.getItem("vs.acct")) || 10000,
+    tradeRiskFrac: (Number(localStorage.getItem("vs.riskpref")) || 1) / 100,
+    symbol,
+    side,
+    rMultipleT1: activePlan?.rMultipleT1 ?? null,
+    positions: loadPositions(),
+    regime,
+  });
+  const fc = finalCall({
+    side,
+    reco,
+    plan: activePlan,
+    stage: shan?.stage ?? null,
+    mtf: shan?.mtf ?? { weekly: "neutral", daily: "neutral", aligned: false, detail: "" },
+    confluencePassed: r.confluence.passed,
+    chasing: !!r.confluence.chasing,
+    discipline: disc,
+  });
+
   els.exploreReco.innerHTML =
+    finalCallPanelHtml(fc) +
     recoPanelHtml(reco) +
     coachPanelHtml(nextSteps(reco, plan, r.price)) +
-    (state.candles.length ? shannonPanelHtml(shannonRead(state.candles), r.price) : "") +
+    disciplinePanelHtml(disc) +
+    (shan ? shannonPanelHtml(shan, r.price) : "") +
     confluencePanelHtml(r.confluence) +
     thesisPanelHtml(buildThesis(r)) +
     confirmationPanelHtml(r.confirmation) +
-    tradePlanPanelHtml(plan);
-  wirePositionSizer(els.exploreReco, plan);
-  const symbol = els.symbol.value.trim().toUpperCase() || r.ticker;
-  wireTrackButton(els.exploreReco, symbol, plan, () =>
-    setStatus(`${symbol} tracked — see Scanner → Positions for live P&L in R.`, "ok"),
+    tradePlanPanelHtml(activePlan);
+  wirePositionSizer(els.exploreReco, activePlan);
+  wireTrackButton(els.exploreReco, symbol, activePlan, () =>
+    setStatus(`${symbol} ${side === "short" ? "short " : ""}tracked — see Scanner → Positions for live P&L in R.`, "ok"),
   );
+  // One party per symbol per session — recompute() re-renders on every slider tweak.
+  if ((fc.call === "GO" || fc.call === "GO-HALF") && !celebratedSymbols.has(symbol)) {
+    celebratedSymbols.add(symbol);
+    celebrate(`${symbol} is a ${fc.call}${side === "short" ? " · SHORT" : ""} — follow the plan! 🚀`);
+  }
 }
+const celebratedSymbols = new Set<string>();
 
 /** AVWAP line + ±1σ bands, the pinch AVWAPs, 50/200 MA and the trade levels. */
 function buildExploreOverlays(c: Candle[], anchorIndex: number, r: ScanResult): ChartOverlays {

@@ -6,14 +6,19 @@ import {
   buildTradePlan,
   defaultAnchorHighIndex,
   defaultAnchorIndex,
+  buildShortPlan,
+  checkDiscipline,
   closePosition,
   detectGaps,
+  finalCall,
   journalStats,
   markToMarket,
+  marketRegime,
   monitorRow,
   nextSteps,
   pickTop,
   positionAdvice,
+  sideOf,
   recoContextFromScan,
   recommend,
   rescoreUniverse,
@@ -23,6 +28,7 @@ import {
   smaSeries,
   sortMonitorRows,
   type ChosenAnchor,
+  type MarketRegime,
   type MonitorRow,
   type MonitorStatus,
   type ProfileAnalysis,
@@ -44,6 +50,8 @@ import { coachPanelHtml } from "./coach-view";
 import { recoPanelHtml } from "./reco-view";
 import { shannonPanelHtml } from "./shannon-view";
 import { wireTrackButton } from "./trade-view";
+import { disciplinePanelHtml, finalCallPanelHtml, regimeChipHtml } from "./decision-view";
+import { celebrate } from "./celebrate";
 import { confirmationPanelHtml, confluencePanelHtml, thesisPanelHtml } from "./thesis-view";
 import { tradePlanPanelHtml, wirePositionSizer } from "./trade-view";
 
@@ -112,6 +120,10 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
   let viewActive = false;
   /** True while a live scan is fetching (monitor passes defer to it). */
   let scanRunning = false;
+  /** Benchmark traffic light — refreshed on every scan, feeds the discipline guard. */
+  let regime: MarketRegime = { light: "unknown", stage: null, weekly: "neutral", detail: "Run a scan to read the market regime." };
+  /** Tickers already celebrated this session (one party per GO, not per click). */
+  const celebrated = new Set<string>();
 
   const els = {
     uniSource: $("uniSource"),
@@ -152,6 +164,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     posMeta: $("posMeta"),
     posStats: $("posStats"),
     positionsBody: $("positionsBody"),
+    regimeWrap: $("regimeWrap"),
   };
 
   // ONE pacer for ALL provider traffic (scan passes, monitor quotes and any
@@ -435,6 +448,8 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
   function rankAndRender(): void {
     results = scanUniverse(lastInputs, lastBenchmark, config);
     recoCache = new Map(); // results changed — recompute recos lazily
+    regime = marketRegime(lastBenchmark);
+    els.regimeWrap.innerHTML = regimeChipHtml(regime);
     renderTable();
     renderDigest();
     if (results.length > 0) {
@@ -602,6 +617,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     alertsFeed.unshift({ time, symbol: row.symbol, from: prev, to: row.status, note: row.note });
     if (alertsFeed.length > 20) alertsFeed.length = 20;
+    if (row.status === "TRIGGERED") celebrate(`${row.symbol} just fired its trigger! 💰`);
     maybeNotify(row);
   }
 
@@ -877,7 +893,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
           : "";
         return `<tr class="mon-row">
           <td>${badge}</td>
-          <td class="tk">${p.symbol}</td>
+          <td class="tk">${p.symbol}${sideOf(p) === "short" ? ' <span class="side-tag">SHORT</span>' : ""}</td>
           <td class="muted">${date}</td>
           <td>${formatPrice(p.entry)} × ${p.shares}</td>
           <td class="neg">${formatPrice(p.stop)}</td>
@@ -961,19 +977,58 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     const plan = buildTradePlan(r);
     const reco = recommend(recoContextFromScan(r), plan);
     const detailCandles = lastInputs.find((i) => i.ticker === r.ticker)?.candles ?? [];
+    const shan = detailCandles.length ? shannonRead(detailCandles) : null;
+
+    // Direction: mirror to the short side when the name is in a confirmed
+    // downtrend (stage 4, or trend gate failed with the weekly pointing down).
+    const bearish = shan?.stage?.stage === 4 || (!r.gates.trend.pass && shan?.mtf.weekly === "down");
+    const side: "long" | "short" = bearish ? "short" : "long";
+    const activePlan = side === "short" ? buildShortPlan(r) : plan;
+
+    // THE decision: setup + stage + timeframes + confluence + discipline guard.
+    const acct = Number(localStorage.getItem("vs.acct")) || 10000;
+    const riskFrac = (Number(localStorage.getItem("vs.riskpref")) || 1) / 100;
+    const disc = checkDiscipline({
+      accountSize: acct,
+      tradeRiskFrac: riskFrac,
+      symbol: r.ticker,
+      side,
+      rMultipleT1: activePlan?.rMultipleT1 ?? null,
+      positions: loadPositions(),
+      regime,
+    });
+    const fc = finalCall({
+      side,
+      reco,
+      plan: activePlan,
+      stage: shan?.stage ?? null,
+      mtf: shan?.mtf ?? { weekly: "neutral", daily: "neutral", aligned: false, detail: "" },
+      confluencePassed: r.confluence.passed,
+      chasing: !!r.confluence.chasing,
+      discipline: disc,
+    });
+
     els.detailPanels.innerHTML =
+      finalCallPanelHtml(fc) +
       recoPanelHtml(reco) +
       coachPanelHtml(nextSteps(reco, plan, r.price)) +
+      disciplinePanelHtml(disc) +
       confluencePanelHtml(r.confluence) +
       mainPlayPanel(r) +
       thesisPanelHtml(buildThesis(r)) +
       anchorPanel(r) +
-      (detailCandles.length ? shannonPanelHtml(shannonRead(detailCandles), r.price) : "") +
+      (shan ? shannonPanelHtml(shan, r.price) : "") +
       avwapPanel(r) +
       confirmationPanelHtml(r.confirmation) +
       gatesPanel(r) +
-      tradePlanPanelHtml(plan) +
+      tradePlanPanelHtml(activePlan) +
       checklistPanel(r);
+
+    // A fresh GO deserves a party (once per ticker per session).
+    if ((fc.call === "GO" || fc.call === "GO-HALF") && !celebrated.has(r.ticker)) {
+      celebrated.add(r.ticker);
+      celebrate(`${r.ticker} is a ${fc.call}${side === "short" ? " · SHORT" : ""} — follow the plan! 🚀`);
+    }
 
     // Wire the "try the other anchor" toggle.
     const candles = lastInputs.find((i) => i.ticker === r.ticker)?.candles ?? [];
@@ -989,10 +1044,10 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     });
 
     // Wire the risk-based position sizer (recompute shares live, persist inputs).
-    wirePositionSizer(els.detailPanels, plan);
-    wireTrackButton(els.detailPanels, r.ticker, plan, () => {
+    wirePositionSizer(els.detailPanels, activePlan);
+    wireTrackButton(els.detailPanels, r.ticker, activePlan, () => {
       renderPositions();
-      setStatus(`${r.ticker} tracked — it now shows under Positions with live P&L in R.`, "ok");
+      setStatus(`${r.ticker} ${side === "short" ? "short " : ""}tracked — it now shows under Positions with live P&L in R.`, "ok");
     });
     updateFlowStrip();
   }

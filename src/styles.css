@@ -1997,3 +1997,200 @@ table.mon-table td.mon-note {
 .pos-del:hover {
   color: var(--down);
 }
+
+/* ================= futuristic skin ================= */
+body {
+  background:
+    radial-gradient(1100px 500px at 85% -10%, rgba(91, 141, 239, 0.09), transparent 60%),
+    radial-gradient(900px 480px at -10% 110%, rgba(38, 166, 154, 0.07), transparent 60%),
+    linear-gradient(rgba(91, 141, 239, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(91, 141, 239, 0.025) 1px, transparent 1px),
+    var(--bg);
+  background-size: auto, auto, 44px 44px, 44px 44px, auto;
+}
+.topbar {
+  background: linear-gradient(180deg, rgba(91, 141, 239, 0.08), transparent 80%), var(--panel);
+  border-bottom: 1px solid rgba(91, 141, 239, 0.35);
+  box-shadow: 0 1px 18px rgba(91, 141, 239, 0.12);
+}
+button.primary {
+  background: linear-gradient(135deg, var(--accent), #7aa5ff);
+  box-shadow: 0 0 14px rgba(91, 141, 239, 0.4);
+  transition: box-shadow 0.2s, transform 0.1s;
+}
+button.primary:hover {
+  box-shadow: 0 0 22px rgba(91, 141, 239, 0.65);
+  transform: translateY(-1px);
+}
+.tabs .tab.active {
+  box-shadow: inset 0 -2px 0 var(--accent), 0 0 12px rgba(91, 141, 239, 0.25);
+}
+.dg-card {
+  transition: border-color 0.15s, transform 0.12s, box-shadow 0.15s;
+}
+.dg-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 18px rgba(91, 141, 239, 0.22);
+}
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 6px rgba(38, 166, 154, 0.35); }
+  50% { box-shadow: 0 0 16px rgba(38, 166, 154, 0.7); }
+}
+.mon-badge.mon-triggered {
+  animation: pulseGlow 1.6s ease-in-out infinite;
+}
+
+/* ---- final call banner ---- */
+.final-call {
+  border-width: 2px;
+  position: relative;
+  overflow: hidden;
+}
+.fc-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 21px;
+  font-weight: 900;
+  letter-spacing: 1px;
+}
+.fc-icon { font-size: 24px; }
+.fc-side {
+  font-size: 10.5px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  letter-spacing: 0.5px;
+}
+.fc-side.long { color: var(--up); border-color: rgba(38, 166, 154, 0.6); }
+.fc-side.short { color: var(--down); border-color: rgba(239, 83, 80, 0.6); }
+.fc-size {
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #f5c842;
+  border: 1px solid rgba(245, 200, 66, 0.6);
+  border-radius: 5px;
+  padding: 2px 8px;
+}
+.fc-headline { margin: 7px 0 0; font-size: 13px; line-height: 1.45; }
+.fc-reasons { margin: 7px 0 0; padding-left: 18px; font-size: 11.5px; color: var(--muted); }
+.fc-reasons li { margin: 3px 0; }
+.fc-note { margin: 8px 0 0; font-size: 10px; }
+.final-call.fc-go {
+  border-color: var(--up);
+  background: linear-gradient(160deg, rgba(38, 166, 154, 0.14), transparent 55%), var(--panel);
+  animation: pulseGlow 2.2s ease-in-out infinite;
+}
+.final-call.fc-go .fc-call { color: var(--up); }
+.final-call.fc-half {
+  border-color: #f5c842;
+  background: linear-gradient(160deg, rgba(245, 200, 66, 0.12), transparent 55%), var(--panel);
+}
+.final-call.fc-half .fc-call { color: #f5c842; }
+.final-call.fc-wait { border-color: rgba(245, 200, 66, 0.45); }
+.final-call.fc-wait .fc-call { color: #f5c842; }
+.final-call.fc-nogo {
+  border-color: var(--down);
+  background: linear-gradient(160deg, rgba(239, 83, 80, 0.12), transparent 55%), var(--panel);
+}
+.final-call.fc-nogo .fc-call { color: var(--down); }
+
+/* ---- discipline guard ---- */
+.disc-chip {
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 5px;
+  margin-left: 6px;
+  letter-spacing: 0.4px;
+  vertical-align: middle;
+}
+.disc-chip.ok { background: rgba(38, 166, 154, 0.16); color: var(--up); }
+.disc-chip.warn { background: rgba(245, 200, 66, 0.16); color: #f5c842; }
+.disc-chip.bad { background: rgba(239, 83, 80, 0.16); color: var(--down); }
+.gate-row.warn .dot { background: #f5c842; box-shadow: 0 0 6px rgba(245, 200, 66, 0.6); }
+
+/* ---- market regime chip ---- */
+.regime-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  font-weight: 800;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  letter-spacing: 0.4px;
+  cursor: help;
+  white-space: nowrap;
+}
+.regime-dot { width: 9px; height: 9px; border-radius: 50%; }
+.regime-green { color: var(--up); border-color: rgba(38, 166, 154, 0.55); }
+.regime-green .regime-dot { background: var(--up); box-shadow: 0 0 9px var(--up); }
+.regime-yellow { color: #f5c842; border-color: rgba(245, 200, 66, 0.5); }
+.regime-yellow .regime-dot { background: #f5c842; box-shadow: 0 0 9px #f5c842; }
+.regime-red { color: var(--down); border-color: rgba(239, 83, 80, 0.55); }
+.regime-red .regime-dot { background: var(--down); box-shadow: 0 0 9px var(--down); }
+.regime-unknown { color: var(--muted); }
+.regime-unknown .regime-dot { background: var(--muted); }
+
+/* ---- short side tag ---- */
+.side-tag {
+  font-size: 9px;
+  font-weight: 800;
+  color: var(--down);
+  border: 1px solid rgba(239, 83, 80, 0.55);
+  border-radius: 4px;
+  padding: 1px 5px;
+  letter-spacing: 0.5px;
+  vertical-align: middle;
+}
+
+/* ---- money-rain celebration ---- */
+.celebrate {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  overflow: hidden;
+}
+.cel-item {
+  position: absolute;
+  top: -40px;
+  animation-name: celFall;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+  filter: drop-shadow(0 0 6px rgba(38, 166, 154, 0.5));
+}
+@keyframes celFall {
+  0% { transform: translateY(-40px) translateX(0) rotate(0deg); opacity: 1; }
+  85% { opacity: 1; }
+  100% { transform: translateY(105vh) translateX(var(--drift, 0px)) rotate(320deg); opacity: 0; }
+}
+.cel-banner {
+  position: absolute;
+  top: 34%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, rgba(38, 166, 154, 0.95), rgba(91, 141, 239, 0.95));
+  color: #fff;
+  font-weight: 900;
+  font-size: 17px;
+  letter-spacing: 0.4px;
+  padding: 12px 22px;
+  border-radius: 12px;
+  box-shadow: 0 0 30px rgba(38, 166, 154, 0.55);
+  animation: celPop 2.8s ease-in-out forwards;
+  white-space: nowrap;
+}
+@keyframes celPop {
+  0% { transform: translateX(-50%) scale(0.6); opacity: 0; }
+  12% { transform: translateX(-50%) scale(1.06); opacity: 1; }
+  18% { transform: translateX(-50%) scale(1); }
+  80% { opacity: 1; }
+  100% { transform: translateX(-50%) scale(0.98); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .final-call.fc-go, .mon-badge.mon-triggered { animation: none; }
+}

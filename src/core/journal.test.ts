@@ -64,6 +64,31 @@ describe("positionAdvice", () => {
   });
 });
 
+describe("short positions", () => {
+  const SHORT_PLAN = { entry: 100, stop: 106, t1: 90, t2: 80 };
+  const short = () => openPosition("bear", SHORT_PLAN, 10, T0, SHORT_PLAN.entry, "short");
+
+  it("profits when price falls and is −1R at the cover-stop", () => {
+    const p = short();
+    expect(markToMarket(p, 94).r).toBeCloseTo(1, 8); // risk 6/share
+    expect(markToMarket(p, 94).pnl).toBeCloseTo(60, 8);
+    expect(markToMarket(p, 106).r).toBeCloseTo(-1, 8);
+  });
+
+  it("classifies a covered short win/loss correctly", () => {
+    expect(outcomeOf(closePosition(short(), 90, T0 + 1))).toBe("win");
+    expect(outcomeOf(closePosition(short(), 106, T0 + 1))).toBe("loss");
+  });
+
+  it("mirrors the advice thresholds", () => {
+    const p = short();
+    expect(positionAdvice(p, 107)).toMatch(/cover now/i);
+    expect(positionAdvice(p, 89)).toMatch(/break-even/);
+    expect(positionAdvice(p, 79)).toMatch(/T2/);
+    expect(positionAdvice(p, 101)).toMatch(/hold/i);
+  });
+});
+
 describe("journalStats", () => {
   it("aggregates open risk, win rate and expectancy in R", () => {
     const positions = [

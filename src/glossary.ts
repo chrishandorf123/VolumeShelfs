@@ -239,6 +239,22 @@ export const GLOSSARY: GlossaryEntry[] = [
       "Every tracked trade risks a known amount: entry minus stop, times shares — that's 1R. A trade that makes twice what it risked is +2R; a stop-out is −1R. Expectancy is the average R across all your closed trades in the journal. +0.3R means that following the system earned you, on average, 30% of your risked amount per trade — win rate alone can't tell you that (a 70% win rate with big losses can still lose money).",
     why: "It's the single number that says whether your process makes money over time. Positive and stable across 20+ trades = a real edge; negative = fix the process before sizing up.",
   },
+  {
+    id: "portfolio-heat",
+    term: "Portfolio heat & the discipline guard",
+    short: "Total % of your account at risk across ALL open positions, plus the survival rules.",
+    plain:
+      "Portfolio heat is what you'd lose if every open stop got hit on the same day — the sum of each position's risk as a % of the account. The discipline guard checks it (cap ~6%, comfortable under 4%) along with the other survival rules the trading literature agrees on: risk ≤1% per trade (2% absolute ceiling), at most ~5 open positions, never doubling into a name you already hold, no new longs in a red (stage-4) market, cutting size in half after a losing streak instead of sizing up, and never taking a trade whose first target pays less than its risk.",
+    why: "Most blown-up accounts die from correlated risk and revenge sizing, not from one bad pick. The guard makes those mistakes visible before the trade, when they're still free.",
+  },
+  {
+    id: "final-call",
+    term: "Final call (GO / WAIT / NO-GO)",
+    short: "One merged decision per ticker — the strictest signal always wins.",
+    plain:
+      "The final call merges everything the app measures — the plain-English verdict, the market stage, weekly/daily alignment, the confluence scorecard, extension (chasing), and the discipline guard — into a single answer. Vetoes are absolute: a discipline block, a missing plan, or fighting the stage makes it NO-GO no matter how pretty the chart. An unearned trigger makes it WAIT. GO-HALF means the setup is valid but a caution flag (cold streak, drawdown, mixed regime) says take half size.",
+    why: "A pile of indicators invites cherry-picking the ones that agree with what you already want to do. One call with the binding reason named removes that temptation.",
+  },
 ];
 
 const BY_ID = new Map(GLOSSARY.map((e) => [e.id, e]));

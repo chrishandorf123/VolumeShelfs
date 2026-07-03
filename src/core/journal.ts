@@ -11,9 +11,14 @@ export interface PlanLevels {
   t2: number;
 }
 
+export type Side = "long" | "short";
+
 export interface Position {
   id: string;
   symbol: string;
+  /** "long" profits when price rises; "short" when it falls. Old saved
+   * positions without the field are treated as long. */
+  side?: Side;
   /** Epoch ms when tracked. */
   openedAt: number;
   /** Actual fill (defaults to the plan's trigger). */
@@ -27,9 +32,13 @@ export interface Position {
   closedAt?: number;
 }
 
+export function sideOf(p: Position): Side {
+  return p.side === "short" ? "short" : "long";
+}
+
 /** Per-share risk the position was opened with (the definition of 1R). */
 export function riskPerShare(p: Position): number {
-  return p.entry - p.stop;
+  return sideOf(p) === "short" ? p.stop - p.entry : p.entry - p.stop;
 }
 
 export function openPosition(
@@ -38,10 +47,12 @@ export function openPosition(
   shares: number,
   now: number,
   fillPrice = plan.entry,
+  side: Side = "long",
 ): Position {
   return {
     id: `${symbol}-${now}`,
     symbol: symbol.toUpperCase(),
+    side,
     openedAt: now,
     entry: fillPrice,
     stop: plan.stop,
@@ -68,7 +79,8 @@ export interface Mark {
 /** Mark a position to a price (live for open, exit for closed). */
 export function markToMarket(p: Position, price: number): Mark {
   const risk = riskPerShare(p);
-  const perShare = price - p.entry;
+  // A short profits when price falls: flip the per-share P&L sign.
+  const perShare = sideOf(p) === "short" ? p.entry - price : price - p.entry;
   return {
     pnl: perShare * p.shares,
     pnlPct: p.entry > 0 ? perShare / p.entry : 0,
@@ -95,9 +107,13 @@ export function outcomeOf(p: Position): Outcome | null {
 
 /** What to do with an open position at this price — the coach, post-entry. */
 export function positionAdvice(p: Position, price: number): string {
-  if (price <= p.stop) return `Stop violated (${p.stop.toFixed(2)}) — exit now, no averaging down.`;
-  if (price >= p.t2) return `Through T2 (${p.t2.toFixed(2)}) — take the rest or trail tight.`;
-  if (price >= p.t1) return `At T1 (${p.t1.toFixed(2)}) — trim and move the stop to break-even.`;
+  const short = sideOf(p) === "short";
+  const hitStop = short ? price >= p.stop : price <= p.stop;
+  const hitT2 = short ? price <= p.t2 : price >= p.t2;
+  const hitT1 = short ? price <= p.t1 : price >= p.t1;
+  if (hitStop) return `Stop violated (${p.stop.toFixed(2)}) — ${short ? "cover" : "exit"} now, no averaging ${short ? "up" : "down"}.`;
+  if (hitT2) return `Through T2 (${p.t2.toFixed(2)}) — take the rest or trail tight.`;
+  if (hitT1) return `At T1 (${p.t1.toFixed(2)}) — ${short ? "cover part" : "trim"} and move the stop to break-even.`;
   const m = markToMarket(p, price);
   if (Number.isFinite(m.r) && m.r <= -0.5) return `Down ${Math.abs(m.r).toFixed(1)}R — nearing the stop; no adds.`;
   return `Hold — stop ${p.stop.toFixed(2)}, next objective ${p.t1.toFixed(2)}.`;

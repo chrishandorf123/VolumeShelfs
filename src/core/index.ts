@@ -22,3 +22,6 @@ export * from "./monitor";
 export * from "./coach";
 export * from "./shannon";
 export * from "./journal";
+export * from "./regime";
+export * from "./discipline";
+export * from "./finalCall";
