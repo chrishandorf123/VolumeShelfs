@@ -119,8 +119,21 @@ function medianMove(trades: Trade[]): number {
 export interface Tables {
   byBucket: Cell[]; // A,B,C,D,ALL
   byBucketRegime: Cell[]; // bucket × trend regime
+  /** bucket × footprint-feature state ("feat:absorption:on" …) — computed
+   * always, CONSUMED by decide() only behind FeatureToggles (default off,
+   * pending the out-of-sample ablation; see docs/ABLATION.md). */
+  byBucketFeature: Cell[];
   baseRateAll: number;
 }
+
+/** The promotable footprint conditions, exactly as decide() keys them. */
+export const FEATURE_CONDITIONS = {
+  /** Bullish institutional absorption at the signal bar. */
+  absorption: (t: Trade) => t.footprint.absorptionBull,
+  /** Any bullish AVWAP event at the signal bar (reclaim / hold / defense). */
+  avwapEvent: (t: Trade) => t.footprint.reclaim || t.footprint.reclaimHold || t.footprint.defense,
+} as const;
+export type FeatureName = keyof typeof FEATURE_CONDITIONS;
 
 /** Build the headline bucket table + the regime split, with base-rate controls. */
 export function buildTables(trades: Trade[], candles: Candle[], config: BacktestConfig): Tables {
@@ -144,7 +157,21 @@ export function buildTables(trades: Trade[], candles: Candle[], config: Backtest
       byBucketRegime.push(summarize(b, `trend:${rg}`, tr, base, config.horizons));
     }
   }
-  return { byBucket, byBucketRegime, baseRateAll };
+
+  // Footprint conditioning: bucket × feature on/off. Same summarize + base-rate
+  // machinery as every other cell — the table carries the edge estimate, no
+  // hand-tuned rule.
+  const byBucketFeature: Cell[] = [];
+  for (const [name, cond] of Object.entries(FEATURE_CONDITIONS)) {
+    for (const b of BUCKETS) {
+      for (const state of ["on", "off"] as const) {
+        const tr = trades.filter((t) => t.bucket === b && cond(t) === (state === "on"));
+        const base = baseRateForMove(candles, config, medianMove(tr) || overallMove, trend, null);
+        byBucketFeature.push(summarize(b, `feat:${name}:${state}`, tr, base, config.horizons));
+      }
+    }
+  }
+  return { byBucket, byBucketRegime, byBucketFeature, baseRateAll };
 }
 
 export interface GateAblationRow {
@@ -157,6 +184,35 @@ export interface GateAblationRow {
 }
 
 const GATE_KEYS = ["rvol", "rsi", "macd", "reversal", "climax"] as const;
+
+/** Marginal effect of each footprint feature, per bucket — same shape as the
+ * confirmation-gate ablation (recorded, reported, never baked into entry). */
+export function footprintAblation(trades: Trade[]): GateAblationRow[] {
+  const rows: GateAblationRow[] = [];
+  const KEYS = [
+    ["absorptionBull", (t: Trade) => t.footprint.absorptionBull],
+    ["absorptionBear", (t: Trade) => t.footprint.absorptionBear],
+    ["reclaim", (t: Trade) => t.footprint.reclaim],
+    ["reclaimHold", (t: Trade) => t.footprint.reclaimHold],
+    ["defense", (t: Trade) => t.footprint.defense],
+    ["avwapLoss", (t: Trade) => t.footprint.loss],
+  ] as const;
+  for (const [name, cond] of KEYS) {
+    for (const b of BUCKETS) {
+      const tr = trades.filter((t) => t.bucket === b && cond(t));
+      const k = tr.filter((t) => t.hitT1).length;
+      rows.push({
+        gate: name,
+        bucket: b,
+        n: tr.length,
+        hitRateT1: tr.length ? k / tr.length : 0,
+        ciT1: wilson(k, tr.length),
+        avgR: tr.length ? tr.reduce((s, t) => s + t.rMultiple, 0) / tr.length : 0,
+      });
+    }
+  }
+  return rows;
+}
 
 /** Marginal effect of each confirmation gate, per bucket (additive, not baked in). */
 export function gateAblation(trades: Trade[]): GateAblationRow[] {

@@ -1,5 +1,5 @@
 import type { Bucket, LiveState } from "./backtest";
-import type { Cell, Tables } from "./probabilityTable";
+import type { Cell, FeatureName, Tables } from "./probabilityTable";
 
 /**
  * The decision engine. Given the live last-bar state and the backtested
@@ -22,6 +22,20 @@ export const DEFAULT_SIZING: SizingConfig = {
   kellyMultiplier: 0.25,
   kellyCap: 0.5,
   maxPerTradeRisk: 0.01,
+};
+
+/**
+ * Which footprint features decide() is allowed to CONDITION on. A feature is
+ * promoted to `true` only after the walk-forward ablation shows positive
+ * out-of-sample expectancy that survives the cost stress and isn't a single
+ * lucky parameter cell — see docs/ABLATION.md for the current decision.
+ * Both default OFF: implemented, recorded on every trade, not yet live.
+ */
+export type FeatureToggles = Record<FeatureName, boolean>;
+
+export const DEFAULT_FEATURE_TOGGLES: FeatureToggles = {
+  absorption: false,
+  avwapEvent: false,
 };
 
 export type Action = "TAKE" | "WATCH" | "STAND_ASIDE";
@@ -75,7 +89,12 @@ function standAside(reason: string, live: LiveState, bucket: Bucket | null): Mod
   };
 }
 
-export function decide(live: LiveState, tables: Tables, sizing: SizingConfig = DEFAULT_SIZING): ModelRecommendation {
+export function decide(
+  live: LiveState,
+  tables: Tables,
+  sizing: SizingConfig = DEFAULT_SIZING,
+  toggles: FeatureToggles = DEFAULT_FEATURE_TOGGLES,
+): ModelRecommendation {
   const regimeLabel = `trend:${live.trend} · vol:${live.vol}`;
   if (!live.setupActive || live.bucket === null) {
     const why = live.reasons.length ? live.reasons.join("; ") : "setup not active";
@@ -83,13 +102,29 @@ export function decide(live: LiveState, tables: Tables, sizing: SizingConfig = D
   }
   const bucket = live.bucket;
 
-  // Prefer the regime-specific cell; fall back to the broader bucket cell (with a
-  // low-confidence flag) only if the regime cell is under-sampled.
+  // Cell preference: (1) a PROMOTED footprint-feature cell, when its toggle is
+  // on and it carries sample; (2) the regime-specific cell; (3) the broader
+  // bucket cell (flagged low-confidence). Feature cells exist in the tables
+  // regardless — the toggle only controls whether decide() may act on them.
+  let featureCell: Cell | null = null;
+  if (live.footprint) {
+    const states: Record<FeatureName, boolean> = {
+      absorption: live.footprint.absorptionBull,
+      avwapEvent: live.footprint.reclaim || live.footprint.reclaimHold || live.footprint.defense,
+    };
+    for (const name of Object.keys(states) as FeatureName[]) {
+      if (!toggles[name]) continue;
+      const key = `feat:${name}:${states[name] ? "on" : "off"}`;
+      const c = tables.byBucketFeature.find((x) => x.bucket === bucket && x.regime === key);
+      if (c && c.n >= sizing.minSampleN && (!featureCell || c.n > featureCell.n)) featureCell = c;
+    }
+  }
   const regimeCell = tables.byBucketRegime.find((c) => c.bucket === bucket && c.regime === `trend:${live.trend}`);
   const bucketCell = tables.byBucket.find((c) => c.bucket === bucket && c.regime === "ALL");
   let cell: Cell | null = null;
   let lowSample = false;
-  if (regimeCell && regimeCell.n >= sizing.minSampleN) cell = regimeCell;
+  if (featureCell) cell = featureCell;
+  else if (regimeCell && regimeCell.n >= sizing.minSampleN) cell = regimeCell;
   else if (bucketCell && bucketCell.n >= sizing.minSampleN) {
     cell = bucketCell;
     lowSample = true;

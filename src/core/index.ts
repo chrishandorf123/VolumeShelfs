@@ -33,3 +33,5 @@ export * from "./breakdown";
 export * from "./signalProof";
 export * from "./sectorStrength";
 export * from "./rotation";
+export * from "./footprint";
+export * from "./ablation";

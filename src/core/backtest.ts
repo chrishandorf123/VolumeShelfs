@@ -2,6 +2,7 @@ import type { Candle } from "./types";
 import { atrSeries, macd, rsiSeries, slopeOf, smaSeries, bullishReversalBar } from "./indicators";
 import { computeAnchoredProfile } from "./volumeProfile";
 import { detectGaps, detectHvnShelves, nearestShelves } from "./shelves";
+import { DEFAULT_FOOTPRINT_CONFIG, computeFootprint, type FootprintConfig, type FootprintSnapshot } from "./footprint";
 
 /**
  * Research backtest of one hypothesis (long, v1): when a liquid name holds a
@@ -32,6 +33,9 @@ export interface BacktestConfig {
   horizons: number[];
   /** HVN shelf strength (× mean row volume) for shelf/target detection. */
   shelfK: number;
+  /** Footprint-feature parameters (absorption / AVWAP events). Recorded on
+   * every trade as conditioning variables; see docs/FOOTPRINT_MAPPING.md. */
+  footprint?: FootprintConfig;
 }
 
 export const DEFAULT_BACKTEST_CONFIG: BacktestConfig = {
@@ -62,6 +66,8 @@ export interface Trade {
   trend: TrendRegime;
   vol: VolRegime;
   gates: Gates;
+  /** Footprint conditioning features, read at the SIGNAL bar (close of t). */
+  footprint: FootprintSnapshot;
   breakeven: number; // operative anchored VWAP = target 1
   targetShelf: number | null; // travel-lane target = target 2
   stop: number;
@@ -105,6 +111,8 @@ export interface LiveState {
   trend: TrendRegime;
   vol: VolRegime;
   gates: Gates;
+  /** Footprint features at the last bar (null only if history is too thin). */
+  footprint: FootprintSnapshot | null;
   breakeven: number | null; // operative AVWAP (T1)
   shelf: number | null; // nearest HVN below (support / POC-ish)
   targetShelf: number | null; // T2
@@ -197,6 +205,9 @@ export function runBacktest(candles: Candle[], config: BacktestConfig = DEFAULT_
   const w52hi = windowedExtremeIndex(candles, (c) => c.high, BARS_52W, true);
   const w52lo = windowedExtremeIndex(candles, (c) => c.low, BARS_52W, false);
   const yopen = yearOpenIndex(candles);
+
+  // Footprint conditioning features, one pass, strictly trailing (≤ t).
+  const fp = computeFootprint(candles, config.footprint ?? DEFAULT_FOOTPRINT_CONFIG);
 
   // Context indicators (all point-in-time).
   const sma200 = smaSeries(closes, 200);
@@ -355,6 +366,7 @@ export function runBacktest(candles: Candle[], config: BacktestConfig = DEFAULT_
       trend: trendOf(t),
       vol: volOf(t),
       gates: gatesAt(t),
+      footprint: fp[t],
       breakeven: t1,
       targetShelf: t2,
       stop,
@@ -380,6 +392,7 @@ export function runBacktest(candles: Candle[], config: BacktestConfig = DEFAULT_
     trend: trendOf(lt),
     vol: volOf(lt),
     gates: gatesAt(lt),
+    footprint: fp[lt] ?? null,
     breakeven: opAnchor[lt] >= 0 ? opVwap[lt] : null,
     shelf: ev.shelf,
     targetShelf: ev.target,
