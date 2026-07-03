@@ -207,6 +207,30 @@ export const GLOSSARY: GlossaryEntry[] = [
       "This is the exact filter from Wujastyk's published scanner. It flags a name when four things line up: price is above the volume POC (on a volume floor), price is above the 200-day average (healthy long-term trend), the 5-day average is rising (short-term turning up), and price is still below its anchored VWAP (the average everyone paid — so there's room to run up to it). It's a 'buy strength that's temporarily below its mean' setup.",
     why: "When all four align you get an uptrend pulling back to a floor with room to travel back up to fair value — a high-quality, repeatable entry rather than chasing.",
   },
+  {
+    id: "avwap-map",
+    term: "AVWAP map (Shannon)",
+    short: "Every event-anchored AVWAP stacked around price: supply above, support below.",
+    plain:
+      "Brian Shannon's method anchors a VWAP to every event where a crowd of traders established positions — the year/quarter/month start, the 52-week and all-time high and low, the biggest gap day, the highest-volume day, even the first traded bar. Each line is that crowd's average cost. Lines above price are supply (those buyers are underwater and tend to sell at break-even); lines below are support (those holders are profitable and tend to defend their cost). The map stacks them all around today's price so you can see the nearest wall in each direction.",
+    why: "Rallies stall at overhead AVWAPs and pullbacks catch at supporting ones — the map shows you exactly which level is next, and why it matters.",
+  },
+  {
+    id: "stage",
+    term: "Market stage (1–4)",
+    short: "Base (1) → markup (2) → distribution (3) → decline (4). Only buy stage 2.",
+    plain:
+      "Every stock cycles through four stages: Stage 1 is a flat base after a decline (accumulation), Stage 2 is the markup uptrend, Stage 3 is a stalling top (distribution), and Stage 4 is the decline. This app classifies the stage from where price sits relative to its 200-day average, the 200-day's slope now, and its slope two quarters ago (which tells a flat line after a fall apart from a flat line after a rise).",
+    why: "Shannon's rule: the odds only favor long trades in Stage 2. Knowing the stage stops you bottom-fishing Stage 4 or overstaying Stage 3.",
+  },
+  {
+    id: "handoff",
+    term: "AVWAP handoff",
+    short: "In an uptrend, the AVWAP from each newer higher low takes over as support.",
+    plain:
+      "As an uptrend climbs, each pullback sets a higher low, and the AVWAP anchored to that newest low becomes the working support line — the older lows' AVWAPs 'hand off' the job. The handoff is intact while the low-anchored AVWAPs stack upward and price holds above the newest one. If price loses the newest AVWAP, the older ones underneath are the next tests.",
+    why: "It gives you a rising, volume-weighted trail for stops and add points that tightens as the trend matures — instead of a stale line from months ago.",
+  },
 ];
 
 const BY_ID = new Map(GLOSSARY.map((e) => [e.id, e]));

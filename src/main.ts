@@ -6,6 +6,7 @@ import {
   anchorCoach,
   anchoredVwapBands,
   anchoredVwapSeries,
+  buildAvwapMap,
   buildThesis,
   buildTradePlan,
   computeAnchoredProfile,
@@ -19,6 +20,7 @@ import {
   recoContextFromScan,
   runBacktest,
   scanTicker,
+  shannonRead,
   smaSeries,
   type AnalysisOptions,
   type AnchorCoach,
@@ -33,6 +35,7 @@ import { initScanner } from "./scanner-ui";
 import { initGuide } from "./guide";
 import { coachPanelHtml } from "./coach-view";
 import { recoPanelHtml } from "./reco-view";
+import { shannonPanelHtml } from "./shannon-view";
 import { confirmationPanelHtml, confluencePanelHtml, thesisPanelHtml } from "./thesis-view";
 import { tradePlanPanelHtml, wirePositionSizer } from "./trade-view";
 import { modelPanelHtml } from "./model-view";
@@ -464,6 +467,7 @@ function renderExploreReco(r: ScanResult | null): void {
   els.exploreReco.innerHTML =
     recoPanelHtml(reco) +
     coachPanelHtml(nextSteps(reco, plan, r.price)) +
+    (state.candles.length ? shannonPanelHtml(shannonRead(state.candles), r.price) : "") +
     confluencePanelHtml(r.confluence) +
     thesisPanelHtml(buildThesis(r)) +
     confirmationPanelHtml(r.confirmation) +
@@ -493,6 +497,28 @@ function buildExploreOverlays(c: Candle[], anchorIndex: number, r: ScanResult): 
     if (pinchLabels.has(a.label)) {
       series.push({ label: `AVWAP ${a.label}`, values: anchoredVwapSeries(c, a.index), color: "#c792ea" });
     }
+  }
+  // Shannon's two lines that matter most right now: the nearest event-anchored
+  // AVWAP overhead (supply) and the nearest one underneath (support).
+  const map = buildAvwapMap(c);
+  const supply = map.filter((m) => m.role === "supply");
+  const nearestSupply = supply[supply.length - 1];
+  const nearestSupport = map.find((m) => m.role === "support");
+  if (nearestSupply && nearestSupply.anchor.index !== anchorIndex) {
+    series.push({
+      label: `Supply · ${nearestSupply.anchor.label}`,
+      values: anchoredVwapSeries(c, nearestSupply.anchor.index),
+      color: "rgba(239,83,80,0.8)",
+      dashed: true,
+    });
+  }
+  if (nearestSupport && nearestSupport.anchor.index !== anchorIndex) {
+    series.push({
+      label: `Support · ${nearestSupport.anchor.label}`,
+      values: anchoredVwapSeries(c, nearestSupport.anchor.index),
+      color: "rgba(38,166,154,0.8)",
+      dashed: true,
+    });
   }
   const plan = buildTradePlan(r);
   const levels = plan

@@ -14,6 +14,7 @@ import {
   recommend,
   scanTicker,
   scanUniverse,
+  shannonRead,
   smaSeries,
   sortMonitorRows,
   type ChosenAnchor,
@@ -35,6 +36,7 @@ import { Pacer, minIntervalMs } from "./data/rateLimit";
 import { GATE_GLOSSARY } from "./glossary";
 import { coachPanelHtml } from "./coach-view";
 import { recoPanelHtml } from "./reco-view";
+import { shannonPanelHtml } from "./shannon-view";
 import { confirmationPanelHtml, confluencePanelHtml, thesisPanelHtml } from "./thesis-view";
 import { tradePlanPanelHtml, wirePositionSizer } from "./trade-view";
 
@@ -750,6 +752,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     // path builds a fresh ScanResult, so derive from `r` directly (not the cache).
     const plan = buildTradePlan(r);
     const reco = recommend(recoContextFromScan(r), plan);
+    const detailCandles = lastInputs.find((i) => i.ticker === r.ticker)?.candles ?? [];
     els.detailPanels.innerHTML =
       recoPanelHtml(reco) +
       coachPanelHtml(nextSteps(reco, plan, r.price)) +
@@ -757,6 +760,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
       mainPlayPanel(r) +
       thesisPanelHtml(buildThesis(r)) +
       anchorPanel(r) +
+      (detailCandles.length ? shannonPanelHtml(shannonRead(detailCandles), r.price) : "") +
       avwapPanel(r) +
       confirmationPanelHtml(r.confirmation) +
       gatesPanel(r) +
