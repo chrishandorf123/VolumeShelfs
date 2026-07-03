@@ -76,6 +76,7 @@ import { anomalyPanelHtml, institutionalPanelHtml, instPillHtml, tapeIconHtml } 
 import { celebrate } from "./celebrate";
 import { confirmationPanelHtml, confluencePanelHtml, thesisPanelHtml } from "./thesis-view";
 import { tradePlanPanelHtml, wirePositionSizer } from "./trade-view";
+import { registerChatContext } from "./chat/context";
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -1762,6 +1763,44 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     s.textContent = text;
     return s;
   }
+
+  // ---- chat-coach context: what the Scanner knows right now ---------------
+  registerChatContext("scanner", () => {
+    const lines: string[] = [];
+    lines.push(`SCANNER TAB — market regime: ${regime.light.toUpperCase()} — ${regime.detail}`);
+    if (results.length) {
+      lines.push(`Last scan ranked ${results.length} names (${source} universe). Top of the list:`);
+      for (const r of results.slice(0, 12)) {
+        const { reco, plan } = recoOf(r);
+        const gates = GATE_ORDER.filter((g) => r.gates[g]?.pass).length;
+        lines.push(
+          `- ${r.ticker} @ ${formatPrice(r.price)}: score ${r.score.toFixed(0)}, verdict ${reco.label} (${reco.confidence}), gates ${gates}/7, confluence ${r.confluence.passed}/10, early ${earlyOf(r.ticker)?.grade ?? "n/a"}, inst ${instOf(r.ticker)?.rating ?? "n/a"}${plan ? `, plan entry ${formatPrice(plan.entry)} / stop ${formatPrice(plan.stop)} / T1 ${formatPrice(plan.t1)} (${plan.rMultipleT1.toFixed(1)}R)` : ", no plan"}`,
+        );
+      }
+      if (selected) lines.push(`Selected in the detail pane: ${selected}.`);
+    } else {
+      lines.push("No scan has been run yet this session.");
+    }
+    const positions = loadPositions();
+    const open = positions.filter((p) => p.status === "open");
+    if (open.length) {
+      lines.push(`Open positions (${open.length}):`);
+      for (const p of open) {
+        lines.push(
+          `- ${p.symbol} ${sideOf(p)} · ${p.shares} sh @ ${formatPrice(p.entry)}, stop ${formatPrice(p.stop)}, T1 ${formatPrice(p.t1)}, T2 ${formatPrice(p.t2)}${p.context?.call ? ` (tracked on a ${p.context.call})` : ""}`,
+        );
+      }
+    } else {
+      lines.push("No open positions in the journal.");
+    }
+    const stats = journalStats(positions);
+    if (stats.closed) {
+      lines.push(
+        `Journal: ${stats.closed} closed trades, win rate ${Number.isFinite(stats.winRate) ? `${(stats.winRate * 100).toFixed(0)}%` : "n/a"}, expectancy ${stats.expectancyR >= 0 ? "+" : ""}${stats.expectancyR.toFixed(2)}R, total ${stats.totalR >= 0 ? "+" : ""}${stats.totalR.toFixed(1)}R.`,
+      );
+    }
+    return lines.join("\n");
+  });
 
   return {
     activate() {

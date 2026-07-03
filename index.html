@@ -288,6 +288,30 @@
         <div class="guide-body" id="guideBody"></div>
       </div>
     </div>
+    <button id="chatFab" class="chat-fab" type="button" title="Ask the coach — it knows the whole method and what's on your screen">💬<span class="chat-fab-label">Coach</span></button>
+    <div id="chatDrawer" class="chat-drawer" hidden>
+      <div class="chat-head">
+        <div>
+          <h2>Trading coach</h2>
+          <p class="muted">Knows the whole app + your screen right now · powered by Claude</p>
+        </div>
+        <button id="chatClose" class="guide-close" aria-label="Close">✕</button>
+      </div>
+      <div class="chat-key" id="chatKeyRow" hidden>
+        <div class="chat-key-row">
+          <input id="chatKey" type="password" placeholder="Anthropic API key (sk-ant-…)" autocomplete="off" />
+          <button id="chatKeySave" class="ghost" type="button">Save</button>
+        </div>
+        <p class="muted">Stored only in this browser (like your data key). Get one at console.anthropic.com.</p>
+      </div>
+      <div class="chat-msgs" id="chatMsgs"></div>
+      <div class="chat-chips" id="chatChips"></div>
+      <div class="chat-input-row">
+        <textarea id="chatInput" rows="2" placeholder="Ask about any ticker, term or decision… (Enter to send)"></textarea>
+        <button id="chatSend" class="primary" type="button">Send</button>
+      </div>
+      <p class="chat-disclaimer muted">Educational only — not financial advice. The Final Call and discipline guard stay the referee.</p>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

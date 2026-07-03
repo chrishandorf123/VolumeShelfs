@@ -55,6 +55,8 @@ import { sectorOf } from "./data/sectors";
 import { confirmationPanelHtml, confluencePanelHtml, thesisPanelHtml } from "./thesis-view";
 import { tradePlanPanelHtml, wirePositionSizer, wireTrackButton } from "./trade-view";
 import { modelPanelHtml } from "./model-view";
+import { initChat } from "./chat-ui";
+import { registerChatContext } from "./chat/context";
 
 // ---- DOM helpers -----------------------------------------------------------
 const $ = <T extends HTMLElement>(id: string): T => {
@@ -503,6 +505,10 @@ function isHighAnchorBar(candles: Candle[], index: number, look = 20): boolean {
 /** Why the last explore scan produced nothing — surfaced instead of a blank panel. */
 let exploreScanFailure = "";
 
+/** Snapshot of the Explore tab's current read, for the chat coach. */
+let exploreChatSnapshot = "";
+registerChatContext("explore", () => exploreChatSnapshot);
+
 /** Run the single-symbol scan on the chart's anchor (RS unknown, no benchmark). */
 function runExploreScan(c: Candle[], anchorIndex: number, anchoredFromHigh: boolean): ScanResult | null {
   if (c.length < 20) {
@@ -534,6 +540,9 @@ function renderExploreReco(r: ScanResult | null): void {
     // Never blank the decision stack silently — say WHY there is no read.
     els.exploreReco.innerHTML = state.candles.length
       ? `<div class="panel"><h2>No analysis</h2><div class="empty">${exploreScanFailure || "Not enough history to analyze this symbol."}</div></div>`
+      : "";
+    exploreChatSnapshot = state.candles.length
+      ? `Explore tab: ${state.source} is loaded but has no analysis — ${exploreScanFailure || "not enough history."}`
       : "";
     return;
   }
@@ -586,17 +595,40 @@ function renderExploreReco(r: ScanResult | null): void {
     discipline: disc,
   });
 
+  // Snapshot the whole on-screen read for the chat coach (plain text).
+  const inst = state.candles.length ? institutionalRead(state.candles) : null;
+  const early = state.candles.length ? earlySignal(state.candles) : null;
+  exploreChatSnapshot = [
+    `EXPLORE TAB — ${symbol} @ ${formatPrice(r.price)} (${state.source}, ${els.interval.value} bars, read as a ${side.toUpperCase()})`,
+    `Final call: ${fc.call} — ${fc.headline}${fc.reasons.length ? ` Reasons: ${fc.reasons.join(" | ")}` : ""}`,
+    `Verdict: ${reco.label} (${reco.confidence} confidence) — ${reco.headline} Why: ${reco.reasoning.join(" | ")}`,
+    shan?.stage
+      ? `Stage: ${shan.stage.stage} (${shan.stage.name}) — ${shan.stage.guidance} Timeframes: weekly ${shan.mtf.weekly}, daily ${shan.mtf.daily}${shan.mtf.aligned ? " (aligned)" : ""}.`
+      : `Stage: unavailable (needs ~1 year of daily bars).`,
+    `Confluence: ${r.confluence.passed}/10${r.confluence.chasing ? " — extended (chasing)" : ""}${r.confluence.reversionIntoStrength ? " — reversion-into-strength setup" : ""}.`,
+    early ? `Early signal: ${early.grade} (${early.score.toFixed(0)}/100) — ${early.headline}` : "",
+    inst ? `Institutional footprint: ${inst.rating} (${inst.verdict}) — ${inst.headline}` : "",
+    tape ? `Tape: ${tape.level} / ${tape.character} — ${tape.headline}` : "Tape: unscreened.",
+    activePlan
+      ? `Plan (${side}): entry ${formatPrice(activePlan.entry)}, stop ${formatPrice(activePlan.stop)}, T1 ${formatPrice(activePlan.t1)}${activePlan.t1Synthetic ? " (synthetic ~3% marker, not a real level)" : ""} (${activePlan.rMultipleT1.toFixed(1)}R), T2 ${formatPrice(activePlan.t2)}${activePlan.t2Synthetic ? " (synthetic ~3% marker)" : ""} (${activePlan.rMultipleT2.toFixed(1)}R), risk ${(activePlan.riskPct * 100).toFixed(1)}%.`
+      : `Plan: none — no support shelf to build one from.`,
+    `Discipline guard: ${disc.verdict.toUpperCase()} (size ×${disc.sizeFactor})${
+      disc.checks.some((c) => c.level !== "pass")
+        ? ` — ${disc.checks.filter((c) => c.level !== "pass").map((c) => `${c.label}: ${c.message}`).join(" | ")}`
+        : ""
+    }`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
   els.exploreReco.innerHTML =
     finalCallPanelHtml(fc) +
     recoPanelHtml(reco) +
     coachPanelHtml(nextSteps(reco, plan, r.price)) +
     anomalyPanelHtml(tape) +
-    (state.candles.length ? institutionalPanelHtml(institutionalRead(state.candles)) : "") +
+    (state.candles.length ? institutionalPanelHtml(inst) : "") +
     (state.candles.length
-      ? earlyPanelHtml(
-          earlySignal(state.candles),
-          state.candles.length >= 320 ? earlySignal(resampleWeekly(state.candles)) : null,
-        )
+      ? earlyPanelHtml(early, state.candles.length >= 320 ? earlySignal(resampleWeekly(state.candles)) : null)
       : "") +
     proofPanelHtml(exploreProof(symbol)) +
     disciplinePanelHtml(disc) +
@@ -618,7 +650,7 @@ function renderExploreReco(r: ScanResult | null): void {
     {
       call: fc.call,
       verdict: reco.verdict,
-      early: state.candles.length ? earlySignal(state.candles)?.grade : undefined,
+      early: early?.grade,
       tape: tape?.character,
       regime: regime.light,
       side,
@@ -845,6 +877,7 @@ async function boot(): Promise<void> {
   initTabs();
   initGuide();
   initTimeframe();
+  initChat();
   chart.resize();
   // Initial render with offline demo data so the app is never blank.
   const demo = getProvider("sample")!;
