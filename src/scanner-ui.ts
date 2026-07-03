@@ -63,7 +63,7 @@ import { VolumeShelfsChart, type ChartModel, type SeriesOverlay } from "./chart/
 import { formatPrice, formatVolume } from "./chart/scale";
 import { PROVIDERS, getProvider, type Interval, type Quote } from "./data";
 import { loadPositions, removePosition, savePositions, updatePosition } from "./journal-store";
-import { sectorOf } from "./data/sectors";
+import { industryOf, sectorOf } from "./data/sectors";
 import { buildDemoBenchmark, buildDemoUniverse } from "./data/universe";
 import { UNIVERSE_LABELS, universeOf, type UniverseId } from "./data/marketUniverse";
 import { fetchUsListings } from "./data/providers/alphaVantage";
@@ -134,6 +134,17 @@ const WEIGHTS: Array<{ key: keyof ScanConfig["weights"]; label: string }> = [
 export interface ScannerUi {
   activate(): void;
   deactivate(): void;
+  /** The last scan's ranked results (empty before any scan). */
+  results(): ScanResult[];
+  /** Open a ticker in the Scanner detail pane (caller switches the tab). */
+  select(ticker: string): void;
+  /** Provider + key + pacer the Rotation tab shares (ONE calls/min budget). */
+  dataAccess(): {
+    providerId: string;
+    apiKey: string;
+    live: boolean;
+    pace: () => Promise<void>;
+  };
 }
 
 export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error") => void): ScannerUi {
@@ -199,6 +210,11 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     rescanField: $("rescanField"),
     rescanEvery: $<HTMLSelectElement>("rescanEvery"),
     sectorBoard: $("sectorBoard"),
+    tableFilters: $("tableFilters"),
+    tblSearch: $<HTMLInputElement>("tblSearch"),
+    tblVerdict: $<HTMLSelectElement>("tblVerdict"),
+    tblGates: $<HTMLSelectElement>("tblGates"),
+    tblCount: $("tblCount"),
   };
   /** Active sector filter for the results table (null = all). */
   let sectorFilter: string | null = null;
@@ -478,6 +494,25 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
   }
 
   els.onlyPass.addEventListener("change", renderTable);
+  // Table filters: live as you type/choose.
+  els.tblSearch.addEventListener("input", renderTable);
+  els.tblVerdict.addEventListener("change", renderTable);
+  els.tblGates.addEventListener("change", renderTable);
+  // Sortable headers: text/rank columns start ascending, numbers highest-first;
+  // click again to reverse, once more to restore the scan's own ranking.
+  els.table.querySelectorAll<HTMLElement>("th[data-tsort]").forEach((th) => {
+    th.addEventListener("click", () => {
+      const key = th.dataset.tsort!;
+      const first: 1 | -1 = key === "ticker" ? 1 : -1;
+      tableSort =
+        tableSort?.key !== key
+          ? { key, dir: first }
+          : tableSort.dir === first
+            ? { key, dir: (-first as 1 | -1) }
+            : null;
+      renderTable();
+    });
+  });
   els.runScan.addEventListener("click", () => void run());
   els.exportCsv.addEventListener("click", exportResultsCsv);
   els.monitorNow.addEventListener("click", () => void runMonitor());
@@ -791,9 +826,69 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
   }
 
   // ---- results table -----------------------------------------------------
-  function renderTable(): void {
+  /** User sort for the results table (null = the scan's ranking order). */
+  let tableSort: { key: string; dir: 1 | -1 } | null = null;
+  /** Column value accessors for sorting. NaN/unknown sinks to the bottom. */
+  const TABLE_VAL: Record<string, (r: ScanResult) => number | string> = {
+    ticker: (r) => r.ticker,
+    score: (r) => r.score,
+    confl: (r) => r.confluence.passed,
+    early: (r) => earlyOf(r.ticker)?.score ?? NaN,
+    inst: (r) => instOf(r.ticker)?.score ?? NaN,
+    gates: (r) => r.gatesPassed,
+    price: (r) => r.price,
+    rs: (r) => r.rs.excess3mo,
+  };
+
+  /** The rows the user can currently see: all filters, then the chosen sort. */
+  function visibleRows(): ScanResult[] {
     let rows = els.onlyPass.checked ? results.filter((r) => r.passedAll) : results;
     if (sectorFilter) rows = rows.filter((r) => sectorOf(r.ticker) === sectorFilter);
+    const q = els.tblSearch.value.trim().toLowerCase();
+    if (q) {
+      // Ticker, sector or GICS industry — so "semis", "energy" or "NVDA" all work.
+      rows = rows.filter(
+        (r) =>
+          r.ticker.toLowerCase().includes(q) ||
+          sectorOf(r.ticker).toLowerCase().includes(q) ||
+          industryOf(r.ticker).toLowerCase().includes(q),
+      );
+    }
+    const verdict = els.tblVerdict.value;
+    if (verdict) rows = rows.filter((r) => recoOf(r).reco.verdict === verdict);
+    const minGates = Number(els.tblGates.value) || 0;
+    if (minGates) rows = rows.filter((r) => r.gatesPassed >= minGates);
+    if (tableSort) {
+      const { key, dir } = tableSort;
+      const val = TABLE_VAL[key];
+      rows = [...rows].sort((a, b) => {
+        const va = val(a);
+        const vb = val(b);
+        if (typeof va === "string" || typeof vb === "string") return dir * String(va).localeCompare(String(vb));
+        if (!Number.isFinite(va)) return Number.isFinite(vb) ? 1 : 0;
+        if (!Number.isFinite(vb)) return -1;
+        return dir * (va - vb);
+      });
+    }
+    return rows;
+  }
+
+  /** Reflect the active sort in the header arrows. */
+  function syncTableHead(): void {
+    els.table.querySelectorAll<HTMLElement>("th[data-tsort]").forEach((th) => {
+      const key = th.dataset.tsort!;
+      const on = tableSort?.key === key;
+      th.classList.toggle("on", !!on);
+      th.textContent = th.textContent!.replace(/ [▲▼]$/, "") + (on ? (tableSort!.dir === 1 ? " ▲" : " ▼") : "");
+    });
+  }
+
+  function renderTable(): void {
+    const rows = visibleRows();
+    els.tableFilters.hidden = results.length === 0;
+    const total = els.onlyPass.checked ? results.filter((r) => r.passedAll).length : results.length;
+    els.tblCount.textContent = results.length ? `${rows.length} of ${total} shown` : "";
+    syncTableHead();
     els.resultsEmpty.hidden = rows.length > 0;
     els.table.hidden = rows.length === 0;
     els.resultsBody.innerHTML = rows
@@ -834,9 +929,9 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     });
   }
 
-  /** Download the current ranked results as a CSV (the "top setups" list). */
+  /** Download the rows currently visible (filters + sort applied) as CSV. */
   function exportResultsCsv(): void {
-    const rows = els.onlyPass.checked ? results.filter((r) => r.passedAll) : results;
+    const rows = visibleRows();
     if (rows.length === 0) return;
     const header = [
       "Rank", "Ticker", "Score", "Confluence", "N/10", "Gates", "Verdict", "Call",
@@ -1902,6 +1997,16 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
       stopMonitorTimer(); // don't keep polling the API while the tab is hidden
       stopRescanTimer();
     },
+    results: () => results,
+    select,
+    dataAccess: () => ({
+      providerId: els.scanProvider.value,
+      apiKey:
+        els.scanApiKey.value.trim() ||
+        (localStorage.getItem(LS_KEY(els.scanProvider.value)) ?? "").trim(),
+      live: source === "live",
+      pace: () => sharedPacer.wait(),
+    }),
   };
 }
 

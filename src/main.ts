@@ -42,6 +42,7 @@ import { VolumeShelfsChart, type ChartModel, type ChartOverlays } from "./chart/
 import { PROVIDERS, getProvider, parseCsv, type Interval } from "./data";
 import { formatPrice, formatVolume } from "./chart/scale";
 import { initScanner } from "./scanner-ui";
+import { initRotation } from "./rotation-ui";
 import { initGuide } from "./guide";
 import { coachPanelHtml } from "./coach-view";
 import { recoPanelHtml } from "./reco-view";
@@ -851,21 +852,27 @@ function initControls(): void {
 // ---- tabs ------------------------------------------------------------------
 function initTabs(): void {
   const scanner = initScanner(setStatus);
-  const viewExplore = $("view-explore");
-  const viewScanner = $("view-scanner");
   const tabs = document.querySelectorAll<HTMLButtonElement>(".tab");
+  // Clicking a stock in the Rotation tab's industry browser opens it in the
+  // Scanner detail pane.
+  const rotation = initRotation(setStatus, scanner, (ticker) => {
+    document.querySelector<HTMLButtonElement>('.tab[data-view="scanner"]')?.click();
+    scanner.select(ticker);
+  });
+  const views: Record<string, HTMLElement> = {
+    explore: $("view-explore"),
+    scanner: $("view-scanner"),
+    rotation: $("view-rotation"),
+  };
   tabs.forEach((tab) => {
     tab.addEventListener("click", () => {
-      const view = tab.dataset.view;
+      const view = tab.dataset.view ?? "explore";
       tabs.forEach((t) => t.classList.toggle("active", t === tab));
-      viewExplore.hidden = view !== "explore";
-      viewScanner.hidden = view !== "scanner";
-      if (view === "scanner") {
-        scanner.activate();
-      } else {
-        scanner.deactivate(); // stop the monitor's auto-refresh polling
-        chart.resize();
-      }
+      for (const [k, el] of Object.entries(views)) el.hidden = k !== view;
+      if (view === "scanner") scanner.activate();
+      else scanner.deactivate(); // stop the monitor's auto-refresh polling
+      if (view === "rotation") rotation.activate();
+      if (view === "explore") chart.resize();
     });
   });
 }

@@ -32,3 +32,4 @@ export * from "./anomaly";
 export * from "./breakdown";
 export * from "./signalProof";
 export * from "./sectorStrength";
+export * from "./rotation";

@@ -4,6 +4,8 @@
  * one bet wearing three tickers — both need to know the sector. Names outside
  * the map report "Other"; crypto/FX pairs report their own class.
  */
+import { GICS_INDUSTRY, GICS_SECTOR } from "./gicsMap";
+
 const SECTOR_MAP: Record<string, string> = {
   // Semis
   NVDA: "Semis", AMD: "Semis", INTC: "Semis", QCOM: "Semis", TXN: "Semis",
@@ -73,9 +75,17 @@ const SECTOR_MAP: Record<string, string> = {
   XLK: "Semis",
 };
 
-/** Sector for a ticker; pairs report their asset class, unknowns "Other". */
+/** Sector for a ticker; pairs report their asset class, unknowns "Other".
+ * Precedence: hand-curated trading groups first (finer than GICS — "Semis"
+ * beats "Information Technology"), then the full GICS index map, then Other. */
 export function sectorOf(symbol: string): string {
   const sym = symbol.trim().toUpperCase();
   if (/^[A-Z0-9]{2,10}[/-][A-Z]{3}$/.test(sym)) return "Crypto/FX";
-  return SECTOR_MAP[sym] ?? "Other";
+  return SECTOR_MAP[sym] ?? GICS_SECTOR[sym] ?? "Other";
+}
+
+/** Finer GICS sub-industry when known ("Semiconductors"), else the sector. */
+export function industryOf(symbol: string): string {
+  const sym = symbol.trim().toUpperCase();
+  return GICS_INDUSTRY[sym] ?? sectorOf(sym);
 }

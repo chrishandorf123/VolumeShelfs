@@ -23,6 +23,7 @@
         <nav class="tabs" id="tabs">
           <button class="tab active" data-view="explore">Explore</button>
           <button class="tab" data-view="scanner">Scanner</button>
+          <button class="tab" data-view="rotation">Rotation</button>
         </nav>
         <button id="guideBtn" class="guide-btn" title="Plain-English guide to every term">? Guide</button>
         <div class="topbar-status" id="status" role="status"></div>
@@ -249,11 +250,29 @@
           <div class="results-pane">
             <div class="skipped-row" id="skippedRow" hidden></div>
             <div class="digest" id="digest"></div>
+            <div class="table-filters" id="tableFilters" hidden>
+              <input id="tblSearch" type="search" placeholder="Filter ticker / sector / industry… (e.g. semis, energy, NVDA)" />
+              <select id="tblVerdict" title="Show only one verdict">
+                <option value="">All verdicts</option>
+                <option value="buy">BUY</option>
+                <option value="buy-dip">BUY THE DIP</option>
+                <option value="wait">WAIT FOR RECLAIM</option>
+                <option value="watch">ON WATCH</option>
+                <option value="avoid">AVOID</option>
+              </select>
+              <select id="tblGates" title="Minimum gates passed">
+                <option value="0">Any gates</option>
+                <option value="5">5+ gates</option>
+                <option value="6">6+ gates</option>
+                <option value="7">All 7 gates</option>
+              </select>
+              <span class="tk-count" id="tblCount"></span>
+            </div>
             <table class="results" id="resultsTable">
               <thead>
                 <tr>
-                  <th>#</th><th>Ticker</th><th>Score</th><th>Confl</th><th title="Stealth accumulation score — tells that precede the breakout trigger">Early</th><th title="Institutional footprint: A/B accumulation · C neutral · D/E distribution">Inst</th><th>Gates</th>
-                  <th>Price</th><th>RS 3mo</th><th>Shelf</th><th>Main play</th>
+                  <th>#</th><th class="tbl-sort" data-tsort="ticker">Ticker</th><th class="tbl-sort" data-tsort="score">Score</th><th class="tbl-sort" data-tsort="confl">Confl</th><th class="tbl-sort" data-tsort="early" title="Stealth accumulation score — tells that precede the breakout trigger">Early</th><th class="tbl-sort" data-tsort="inst" title="Institutional footprint: A/B accumulation · C neutral · D/E distribution">Inst</th><th class="tbl-sort" data-tsort="gates">Gates</th>
+                  <th class="tbl-sort" data-tsort="price">Price</th><th class="tbl-sort" data-tsort="rs">RS 3mo</th><th>Shelf</th><th>Main play</th>
                 </tr>
               </thead>
               <tbody id="resultsBody"></tbody>
@@ -281,6 +300,42 @@
           </aside>
         </main>
       </div>
+    </div>
+
+    <div id="view-rotation" hidden>
+      <section class="controls rotation-controls">
+        <div class="control rot-blurb">
+          <label>Where is the money going?</label>
+          <p class="muted">Relative Rotation read of the 11 sector ETFs vs SPY (weekly, JdK RS-Ratio × RS-Momentum). Sectors travel clockwise: Improving → Leading → Weakening → Lagging.</p>
+        </div>
+        <div class="control control-action">
+          <button id="rotRun" class="primary" title="Fetch the 11 SPDR sector ETFs + SPY with your Scanner data key (12 calls, paced) and compute the rotation map">Run rotation read</button>
+        </div>
+        <div class="control control-action">
+          <button id="rotDemo" class="ghost" title="Instant demo with synthetic sector data — see how the map reads before spending API calls">Demo</button>
+        </div>
+        <div class="control"><span class="tk-count" id="rotMeta"></span></div>
+      </section>
+      <div class="rot-digest" id="rotDigest" hidden></div>
+      <main class="rotation-workspace">
+        <div class="rot-chart-wrap panel">
+          <h2>Rotation map <span class="muted">(8-week trails, arrow = this week)</span></h2>
+          <div id="rotChart" class="rot-chart"></div>
+        </div>
+        <div class="rot-table-wrap panel">
+          <h2>Sector ranking</h2>
+          <div id="rotTable"></div>
+        </div>
+      </main>
+      <section class="monitor" id="industrySection">
+        <div class="monitor-head">
+          <h3>Your scan, by industry <span class="tk-count" id="indMeta"></span></h3>
+          <div class="monitor-actions">
+            <input id="indSearch" type="search" placeholder="Search industry / sector / ticker…" />
+          </div>
+        </div>
+        <div id="industryBody" class="monitor-body"></div>
+      </section>
     </div>
 
     <div id="guideOverlay" class="guide-overlay" hidden>

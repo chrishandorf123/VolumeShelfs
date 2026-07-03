@@ -67,6 +67,56 @@ Sources: [uTrade Algos — overfitting risks](https://www.utradealgos.com/blog/w
 [Nurp — common algorithmic trading errors](https://nurp.com/algorithmic-trading-blog/common-algorithmic-trading-errors-and-solutions/),
 [TradingWyckoff — algo trading metrics](https://tradingwyckoff.com/en/algorithmic-trading/algorithmic-trading-metrics/)
 
+## Sector rotation detection (the Rotation tab)
+
+The Rotation tab implements the industry-standard **Relative Rotation Graph
+(RRG)** methodology developed by Julius de Kempenaer, plus the breadth
+cross-checks professionals use to confirm that "money is rotating."
+
+**The math (core/rotation.ts).** For each sector ETF vs the benchmark (SPY):
+
+1. RS = sector close ÷ benchmark close (raw relative strength line).
+2. Smooth RS with an EMA (alpha = 2/(m+1), m = 14 periods).
+3. **JdK RS-Ratio** = 100 + 10 × z-score of the smoothed RS against its own
+   rolling mean/σ over the same window — >100 means a relative UPTREND vs
+   the market, <100 a relative downtrend. Normalization makes sectors
+   directly comparable on one chart.
+4. **JdK RS-Momentum** = the same normalization applied to the rate of change
+   of RS-Ratio — momentum leads ratio, so it turns first.
+5. Weekly bars, per the standard RRG convention (daily is too noisy for
+   sector-level rotation): the app resamples its daily candles to weekly.
+
+**The four quadrants** (RS-Ratio × RS-Momentum): **Leading** (+/+) — strong
+and getting stronger, money is here; **Weakening** (+/−) — still strong but
+momentum cracked, the earliest warning a leader gives; **Lagging** (−/−) —
+weak and falling, money has left; **Improving** (−/+) — still weak but the
+downtrend is stalling: this is where rotations BEGIN. Sectors travel
+clockwise through the quadrants; a move from Improving → Leading is money
+rotating IN, Leading → Weakening is the first crack of money rotating OUT.
+
+**Evidence for the approach.** Sector momentum/rotation is one of the older
+documented edges: a simple relative-momentum strategy beat buy-and-hold about
+70% of the time across 80+ years of sector data, with 1-, 3-, 6-, 9- and
+12-month lookbacks all working; excess returns are real but modest (~1–3%/yr
+in large studies), with a 2025 TSX-60 study finding 6-month lookbacks the
+best signal-to-noise (3-month works, slightly noisier). The app therefore
+shows 1-month AND 3-month relative returns beside the RRG read, and treats
+rotation as a WHERE-to-hunt filter, not a standalone system.
+
+**Breadth confirmation.** Price-only rotation reads can be head-fakes, so the
+tab cross-checks the scan's own breadth per sector: % of members above their
+50-day average, average RS, and count of A+ setups. Falling 50-day breadth
+while the sector ETF still looks fine is fading leadership; expanding breadth
+in an Improving sector is confirmation the rotation is real.
+
+Sources: [StockCharts ChartSchool — Relative Rotation Graphs](https://chartschool.stockcharts.com/table-of-contents/chart-analysis/chart-types/relative-rotation-graphs-rrg-charts),
+[StockCharts — RRG Relative Strength (JdK RS-Ratio/RS-Momentum)](https://chartschool.stockcharts.com/table-of-contents/technical-indicators-and-overlays/technical-indicators/rrg-relative-strength),
+[Quantpedia — Sector Momentum Rotational System](https://quantpedia.com/strategies/sector-momentum-rotational-system),
+[MDPI (2025) — Sector Rotation Strategies in the TSX 60](https://www.mdpi.com/1911-8074/19/1/70),
+[StockCharts — Faber's Sector Rotation Strategy](https://chartschool.stockcharts.com/table-of-contents/trading-strategies-and-models/trading-strategies/fabers-sector-rotation-trading-strategy),
+[TrendSpider — Sector Rotation: Track Where the Money Is Moving](https://trendspider.com/blog/sector-rotation-how-to-track-where-the-money-is-moving/),
+[StockCharts — Using RRGs to Visualize Sector Rotation](https://articles.stockcharts.com/article/articles-rrg-2025-07-using-relative-rotation-graphs-to-visualize-sector-rotation/)
+
 ## Honest limitations (nothing is fool-proof)
 
 - Client-side EOD/delayed data — not tick-accurate; fills are assumed, not real.

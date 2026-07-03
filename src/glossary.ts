@@ -256,6 +256,22 @@ export const GLOSSARY: GlossaryEntry[] = [
     why: "A pile of indicators invites cherry-picking the ones that agree with what you already want to do. One call with the binding reason named removes that temptation.",
   },
   {
+    id: "rotation",
+    term: "Sector rotation (RRG)",
+    short: "A map of which sectors money is moving into and out of, vs the S&P 500.",
+    plain:
+      "Big money doesn't leave the market, it moves between sectors — out of one group and into another. The Rotation tab measures each sector ETF against SPY two ways: RS-Ratio (is its relative strength trending up or down?) and RS-Momentum (is that trend speeding up or slowing down?). Both are centered at 100. That puts every sector in one of four quadrants: Leading (strong and strengthening), Weakening (strong but slowing — the first crack), Lagging (weak and weakening), and Improving (weak but turning up — where rotations begin). Sectors travel clockwise around the map, week by week.",
+    why: "Stocks mostly move with their group. Hunting longs in Leading/Improving sectors — and avoiding fresh Weakening ones — puts the market's strongest current at your back before you even pick a ticker.",
+  },
+  {
+    id: "rs-ratio",
+    term: "RS-Ratio & RS-Momentum",
+    short: "The two axes of the rotation map: trend of relative strength, and its speed.",
+    plain:
+      "RS-Ratio divides a sector's price by SPY's, smooths it, and normalizes it so 100 is neutral: above 100 the sector is in a relative UPTREND (beating the market), below 100 it's losing to the market. RS-Momentum applies the same treatment to the rate of change of RS-Ratio — it measures whether the relative trend is accelerating (above 100) or decelerating (below 100). Momentum turns first, ratio follows: that's why a sector crossing up through 100 momentum while still below 100 ratio ('Improving') is the earliest rotation tell.",
+    why: "Momentum leads ratio. Watching the momentum axis lets you catch a rotation while the sector still looks weak to everyone reading price alone.",
+  },
+  {
     id: "early-signal",
     term: "Early signal (stealth accumulation)",
     short: "Tells that precede the breakout the crowd waits for: dry-up, squeeze, OBV in, higher lows, pocket pivot.",
