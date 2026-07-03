@@ -65,7 +65,8 @@ import { PROVIDERS, getProvider, type Interval, type Quote } from "./data";
 import { loadPositions, removePosition, savePositions, updatePosition } from "./journal-store";
 import { sectorOf } from "./data/sectors";
 import { buildDemoBenchmark, buildDemoUniverse } from "./data/universe";
-import { marketUniverse } from "./data/marketUniverse";
+import { UNIVERSE_LABELS, universeOf, type UniverseId } from "./data/marketUniverse";
+import { fetchUsListings } from "./data/providers/alphaVantage";
 import { Pacer, minIntervalMs } from "./data/rateLimit";
 import { GATE_GLOSSARY } from "./glossary";
 import { coachPanelHtml } from "./coach-view";
@@ -173,6 +174,8 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     detailHead: $("detailHead"),
     detailPanels: $("detailPanels"),
     loadUniverse: $<HTMLButtonElement>("loadUniverse"),
+    universePick: $<HTMLSelectElement>("universePick"),
+    loadAll: $<HTMLButtonElement>("loadAll"),
     keepTop: $<HTMLButtonElement>("keepTop"),
     tickerCount: $("tickerCount"),
     callsPerMin: $<HTMLInputElement>("callsPerMin"),
@@ -260,7 +263,11 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     els.tickers.value.split(/[\s,;]+/).map((s) => s.trim().toUpperCase()).filter(Boolean);
   const refreshTickerCount = () => {
     const n = tickerList().length;
-    els.tickerCount.textContent = n ? `${n} ticker${n === 1 ? "" : "s"}` : "";
+    // Show the real cost of a big list up front: a full pass is ~1 API call
+    // per ticker (+1 benchmark), paced to the calls/min budget.
+    const mins = Math.ceil((n + 1) / currentCallsPerMin());
+    const eta = mins >= 120 ? ` · ~${(mins / 60).toFixed(1)} h/scan` : mins >= 2 ? ` · ~${mins} min/scan` : "";
+    els.tickerCount.textContent = n ? `${n} ticker${n === 1 ? "" : "s"}${eta}` : "";
   };
 
   // Restore the saved watchlist + benchmark so users don't retype every time.
@@ -380,12 +387,41 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
   els.callsPerMin.addEventListener("change", () => {
     localStorage.setItem("vs.callsPerMin", els.callsPerMin.value);
     sharedPacer = new Pacer(minIntervalMs(currentCallsPerMin()));
+    refreshTickerCount(); // the scan-time estimate depends on the rate
   });
-  els.loadUniverse.addEventListener("click", () => {
-    els.tickers.value = marketUniverse().join(" ");
+  const fillTickers = (tickers: string[], label: string) => {
+    els.tickers.value = tickers.join(" ");
     localStorage.setItem("vs.tickers", els.tickers.value);
     refreshTickerCount();
-    setStatus(`Loaded ${marketUniverse().length} liquid names — press Run scan (paced to your calls/min).`, "ok");
+    const mins = Math.ceil((tickers.length + 1) / currentCallsPerMin());
+    setStatus(
+      `Loaded ${label}: ${tickers.length} tickers — a full scan takes ~${mins} min at ${currentCallsPerMin()} calls/min.`,
+      "ok",
+    );
+  };
+  els.loadUniverse.addEventListener("click", () => {
+    const id = els.universePick.value as UniverseId;
+    fillTickers(universeOf(id), UNIVERSE_LABELS[id]);
+  });
+  // EVERY active US-listed stock, from the exchange listings (LISTING_STATUS).
+  els.loadAll.addEventListener("click", () => {
+    void (async () => {
+      const apiKey =
+        els.scanApiKey.value.trim() || (localStorage.getItem(LS_KEY("alphavantage")) ?? "").trim();
+      if (!apiKey) {
+        setStatus("Every-US-stock needs your Alpha Vantage key — switch Universe to “Ticker list → API” and paste it.", "error");
+        return;
+      }
+      els.loadAll.disabled = true;
+      setStatus("Fetching every active US listing from Alpha Vantage…");
+      try {
+        fillTickers(await fetchUsListings(apiKey), "every active US-listed stock");
+      } catch (err) {
+        setStatus(err instanceof Error ? err.message : String(err), "error");
+      } finally {
+        els.loadAll.disabled = false;
+      }
+    })();
   });
   els.keepTop.addEventListener("click", () => {
     if (results.length === 0) {

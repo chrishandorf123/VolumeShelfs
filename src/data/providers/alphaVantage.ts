@@ -186,6 +186,47 @@ export function parseIntradayQuote(
   };
 }
 
+/**
+ * Parse Alpha Vantage's LISTING_STATUS CSV (symbol,name,exchange,assetType,
+ * ipoDate,delistingDate,status) into a clean ticker list: active common
+ * stocks on the major exchanges, pure-letter symbols only. Hyphen/dot symbols
+ * (warrants, units, preferreds, share classes) are dropped — they're
+ * overwhelmingly illiquid noise that just burns API calls at the liquidity gate.
+ */
+export function parseListingCsv(csv: string): string[] {
+  const out = new Set<string>();
+  const lines = csv.split(/\r?\n/);
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(",");
+    if (cols.length < 7) continue;
+    const symbol = (cols[0] ?? "").trim().toUpperCase();
+    const exchange = (cols[2] ?? "").trim();
+    const assetType = (cols[3] ?? "").trim();
+    const status = (cols[6] ?? "").trim();
+    if (status !== "Active" || assetType !== "Stock") continue;
+    if (!/^(NYSE|NASDAQ|AMEX|BATS)/i.test(exchange)) continue;
+    if (/^[A-Z]{1,5}$/.test(symbol)) out.add(symbol);
+  }
+  return [...out].sort();
+}
+
+/** Every active US-listed common stock, straight from the exchange listings. */
+export async function fetchUsListings(apiKey: string): Promise<string[]> {
+  const url = new URL("https://www.alphavantage.co/query");
+  url.searchParams.set("function", "LISTING_STATUS");
+  url.searchParams.set("apikey", apiKey);
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new DataError(`Alpha Vantage HTTP ${res.status}`);
+  const text = await res.text();
+  // Errors/notices come back as JSON where the CSV should be.
+  if (text.trimStart().startsWith("{")) {
+    throw new DataError("Alpha Vantage didn't return the listings CSV — check the API key / rate limit.");
+  }
+  const symbols = parseListingCsv(text);
+  if (symbols.length === 0) throw new DataError("No active listings parsed from Alpha Vantage.");
+  return symbols;
+}
+
 async function avJson(url: URL, symbol: string): Promise<Record<string, unknown>> {
   const res = await fetch(url.toString());
   if (!res.ok) throw new DataError(`Alpha Vantage HTTP ${res.status}`);

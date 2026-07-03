@@ -158,7 +158,15 @@
             <label for="tickers">Tickers (space / comma / newline separated)</label>
             <textarea id="tickers" rows="2" placeholder="AAPL MSFT NVDA AMD ..."></textarea>
             <div class="ticker-actions">
-              <button id="loadUniverse" class="ghost" type="button" title="Fill with a curated liquid US universe (~180 names + ETFs)">Load liquid universe</button>
+              <select id="universePick" title="Pick a ready-made universe, then Load fills the ticker list">
+                <option value="liquid">Liquid movers + ETFs (~180)</option>
+                <option value="sp500">S&amp;P 500 (503)</option>
+                <option value="ndx">Nasdaq-100 (101)</option>
+                <option value="dow">Dow 30</option>
+                <option value="everything">Everything curated (~640)</option>
+              </select>
+              <button id="loadUniverse" class="ghost" type="button" title="Fill the ticker list with the selected universe">Load</button>
+              <button id="loadAll" class="ghost" type="button" title="Fetch EVERY active US-listed stock from the exchange listings (needs your Alpha Vantage key). Thousands of names — the estimate next to the count shows how long a full scan takes at your calls/min.">⛁ Every US stock</button>
               <button id="keepTop" class="ghost" type="button" title="After a scan, trim the list to the top-ranked names as your watchlist">★ Keep top 20</button>
               <span class="tk-count" id="tickerCount"></span>
             </div>
