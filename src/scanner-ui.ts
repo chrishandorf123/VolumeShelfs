@@ -22,7 +22,10 @@ import {
   pickTop,
   positionAdvice,
   projectGrowth,
+  proveEarlySignal,
   realizedR,
+  resampleWeekly,
+  edgeBreakdown,
   sideOf,
   recoContextFromScan,
   recommend,
@@ -46,6 +49,7 @@ import {
   type ScanConfig,
   type ScanInput,
   type ScanResult,
+  type SignalProof,
   type TradePlan,
 } from "./core";
 import { VolumeShelfsChart, type ChartModel, type SeriesOverlay } from "./chart/chart";
@@ -61,7 +65,7 @@ import { recoPanelHtml } from "./reco-view";
 import { shannonPanelHtml } from "./shannon-view";
 import { wireTrackButton } from "./trade-view";
 import { disciplinePanelHtml, finalCallPanelHtml, regimeChipHtml } from "./decision-view";
-import { earlyPanelHtml, earlyPillHtml } from "./early-view";
+import { earlyPanelHtml, earlyPillHtml, proofPanelHtml } from "./early-view";
 import { anomalyPanelHtml, institutionalPanelHtml, instPillHtml, tapeIconHtml } from "./tape-view";
 import { celebrate } from "./celebrate";
 import { confirmationPanelHtml, confluencePanelHtml, thesisPanelHtml } from "./thesis-view";
@@ -216,6 +220,17 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     }
     return tapeCache.get(ticker) ?? null;
   }
+  /** Historical proof replay is O(n²)-ish — computed only on selection, cached. */
+  let proofCache = new Map<string, SignalProof | null>();
+  function proofOf(ticker: string): SignalProof | null {
+    if (!proofCache.has(ticker)) {
+      const candles = candlesOf(ticker);
+      // Adaptive stride keeps the replay under ~400 samples on long histories.
+      const stride = Math.max(2, Math.floor((candles.length - 90) / 400));
+      proofCache.set(ticker, candles.length ? proveEarlySignal(candles, 20, 70, stride) : null);
+    }
+    return proofCache.get(ticker) ?? null;
+  }
   function recoOf(r: ScanResult): { reco: Recommendation; plan: TradePlan | null } {
     let c = recoCache.get(r.ticker);
     if (!c) {
@@ -359,6 +374,12 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
   els.monitorNow.addEventListener("click", () => void runMonitor());
   // One delegated click handler for all monitor rows, across every re-render.
   els.monitorBody.addEventListener("click", (e) => {
+    const del = (e.target as HTMLElement).closest<HTMLElement>("[data-alert-del]");
+    if (del) {
+      saveAlerts(loadAlerts().filter((a) => a.id !== del.dataset.alertDel));
+      del.closest(".al-chip")?.remove();
+      return;
+    }
     const tr = (e.target as HTMLElement).closest<HTMLTableRowElement>("tr[data-ticker]");
     if (tr?.dataset.ticker) select(tr.dataset.ticker);
   });
@@ -491,6 +512,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     earlyCache = new Map();
     instCache = new Map();
     tapeCache = new Map();
+    proofCache = new Map();
     regime = marketRegime(lastBenchmark);
     els.regimeWrap.innerHTML = regimeChipHtml(regime);
     renderTable();
@@ -690,6 +712,50 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     maybeNotify(row);
   }
 
+  // ---- custom price alerts -------------------------------------------------
+  // One-shot alerts checked against every quote the monitor fetches (watchlist,
+  // positions, and any alert-only symbols get quoted too).
+  interface PriceAlert {
+    id: string;
+    symbol: string;
+    price: number;
+    dir: "above" | "below";
+  }
+  const ALERTS_KEY = "vs.priceAlerts.v1";
+  function loadAlerts(): PriceAlert[] {
+    try {
+      const parsed: unknown = JSON.parse(localStorage.getItem(ALERTS_KEY) ?? "[]");
+      return Array.isArray(parsed)
+        ? parsed.filter((a): a is PriceAlert => !!a && typeof a.symbol === "string" && Number.isFinite(a.price))
+        : [];
+    } catch {
+      return [];
+    }
+  }
+  function saveAlerts(alerts: PriceAlert[]): void {
+    localStorage.setItem(ALERTS_KEY, JSON.stringify(alerts));
+  }
+  function checkPriceAlerts(q: Quote): void {
+    const all = loadAlerts();
+    const hit = all.filter(
+      (a) => a.symbol === q.symbol && ((a.dir === "above" && q.price >= a.price) || (a.dir === "below" && q.price <= a.price)),
+    );
+    if (hit.length === 0) return;
+    saveAlerts(all.filter((a) => !hit.includes(a))); // one-shot
+    const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    for (const a of hit) {
+      const note = `Price alert hit: ${a.dir} ${a.price.toFixed(2)} (now ${q.price.toFixed(2)}).`;
+      alertsFeed.unshift({ time, symbol: a.symbol, from: "WATCH", to: "TRIGGERED", note });
+      celebrate(`${a.symbol} hit your ${a.price.toFixed(2)} alert! 🔔`);
+      if (els.monitorNotify.checked) {
+        beep();
+        if (typeof Notification !== "undefined" && Notification.permission === "granted")
+          new Notification(`${a.symbol} 🔔`, { body: note });
+      }
+    }
+    if (alertsFeed.length > 20) alertsFeed.length = 20;
+  }
+
   /** A short synthesized ping for status-change alerts (opt-in via Notify). */
   function beep(): void {
     try {
@@ -803,6 +869,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
           // a second HTTP request (e.g. the GLOBAL_QUOTE fallback).
           const q = await provider.fetchQuote(targets[i].symbol, apiKey || undefined, () => sharedPacer.wait());
           lastQuotes.set(q.symbol, q);
+          checkPriceAlerts(q);
           const row = monitorRow(q, targets[i].plan);
           rows.push(row);
           trackStatusChange(row);
@@ -813,20 +880,20 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
           });
         }
       }
-      // Also mark any OPEN journal positions whose symbols weren't in the
-      // ranked watchlist — the journal deserves live prices too.
-      const posOnly = [...new Set(
-        loadPositions()
-          .filter((p) => p.status === "open")
-          .map((p) => p.symbol),
-      )].filter((s) => !targets.some((t) => t.symbol === s));
-      for (const sym of posOnly) {
+      // Also quote symbols the watchlist doesn't cover but the user cares
+      // about: open journal positions and active price alerts.
+      const extras = [...new Set([
+        ...loadPositions().filter((p) => p.status === "open").map((p) => p.symbol),
+        ...loadAlerts().map((a) => a.symbol),
+      ])].filter((s) => !targets.some((t) => t.symbol === s));
+      for (const sym of extras) {
         if (!viewActive || source !== "live") break;
         await sharedPacer.wait();
-        els.monitorMeta.textContent = `marking position ${sym}…`;
+        els.monitorMeta.textContent = `checking ${sym} (position/alert)…`;
         try {
           const q = await provider.fetchQuote(sym, apiKey || undefined, () => sharedPacer.wait());
           lastQuotes.set(q.symbol, q);
+          checkPriceAlerts(q);
         } catch (err) {
           failures.push({ symbol: sym, message: err instanceof Error ? err.message : String(err) });
         }
@@ -872,9 +939,19 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
       ? `${rows.length}/${total} quoted${skipped}${freshness}${checked}`
       : "";
     els.monitorMeta.title = failures.length ? failures.map((f) => `${f.symbol}: ${f.message}`).join("\n") : "";
+    // Standing price alerts, removable inline.
+    const activeAlerts = loadAlerts();
+    const alertsRow = activeAlerts.length
+      ? `<div class="alerts-active">🔔 ${activeAlerts
+          .map(
+            (a) => `<span class="al-chip">${a.symbol} ${a.dir === "above" ? "≥" : "≤"} ${a.price.toFixed(2)}
+              <button class="al-del" data-alert-del="${a.id}" type="button" title="Remove alert">✕</button></span>`,
+          )
+          .join("")}</div>`
+      : "";
     if (rows.length === 0) {
       const first = failures[0];
-      els.monitorBody.innerHTML = `<div class="empty">No quotes returned${first ? ` — ${escapeHtml(`${first.symbol}: ${first.message}`)}` : " (check the key / rate limit)"}.</div>`;
+      els.monitorBody.innerHTML = `${alertsRow}<div class="empty">No quotes returned${first ? ` — ${escapeHtml(`${first.symbol}: ${first.message}`)}` : " (check the key / rate limit)"}.</div>`;
       return;
     }
     // A row is stale when its live print trails the newest live print by >10
@@ -916,7 +993,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
           )
           .join("")}</div>`
       : "";
-    els.monitorBody.innerHTML = `${feed}<table class="mon-table">
+    els.monitorBody.innerHTML = `${alertsRow}${feed}<table class="mon-table">
       <thead><tr>
         <th>Status</th><th>Ticker</th><th>Price</th><th>Today</th>
         <th title="Distance to the entry trigger (% of price, and in R — units of the plan's risk)">→Entry</th>
@@ -1032,7 +1109,22 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     const closedChrono = positions
       .filter((p) => p.status === "closed")
       .sort((a, b) => (a.closedAt ?? 0) - (b.closedAt ?? 0));
-    els.positionsBody.innerHTML = `${equityCurveSvg(closedChrono)}${projectionLine(stats)}<table class="mon-table">
+    // Which signals pay THIS trader: avg R per signal bucket (n ≥ 2 to show).
+    const buckets = edgeBreakdown(positions).filter((b) => b.n >= 2);
+    const edgeHtml = buckets.length
+      ? `<details class="edge-brk"><summary>🧠 Edge breakdown — which signals pay YOU</summary>
+          <table class="mon-table"><thead><tr><th>Signal</th><th>Value</th><th>n</th><th>Avg R</th><th>Total R</th></tr></thead>
+          <tbody>${buckets
+            .map(
+              (b) => `<tr><td class="muted">${escapeHtml(b.dimLabel)}</td><td class="tk">${escapeHtml(b.bucket)}</td>
+                <td>${b.n}</td><td class="${b.avgR >= 0 ? "pos" : "neg"}">${fmtR(b.avgR)}</td>
+                <td class="${b.totalR >= 0 ? "pos" : "neg"}">${fmtR(b.totalR)}</td></tr>`,
+            )
+            .join("")}</tbody></table>
+          <p class="fc-note muted">Trades tagged at entry with the signals that were firing. Lean into the rows that pay; question the ones that don't.</p>
+        </details>`
+      : "";
+    els.positionsBody.innerHTML = `${equityCurveSvg(closedChrono)}${projectionLine(stats)}${edgeHtml}<table class="mon-table">
       <thead><tr>
         <th></th><th>Ticker</th><th>Opened</th><th>Entry × sh</th><th>Stop</th>
         <th>Last / Exit</th><th title="Open (or realized) P&L in dollars and in R — units of the initial risk">P&L</th>
@@ -1206,9 +1298,14 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
       finalCallPanelHtml(fc) +
       recoPanelHtml(reco) +
       coachPanelHtml(nextSteps(reco, plan, r.price)) +
+      alertSetterHtml(r.ticker, r.price) +
       anomalyPanelHtml(tape) +
       institutionalPanelHtml(instOf(r.ticker)) +
-      earlyPanelHtml(earlyOf(r.ticker)) +
+      earlyPanelHtml(
+        earlyOf(r.ticker),
+        detailCandles.length >= 320 ? earlySignal(resampleWeekly(detailCandles)) : null,
+      ) +
+      proofPanelHtml(proofOf(r.ticker)) +
       disciplinePanelHtml(disc) +
       confluencePanelHtml(r.confluence) +
       mainPlayPanel(r) +
@@ -1242,11 +1339,58 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
 
     // Wire the risk-based position sizer (recompute shares live, persist inputs).
     wirePositionSizer(els.detailPanels, activePlan);
-    wireTrackButton(els.detailPanels, r.ticker, activePlan, () => {
-      renderPositions();
-      setStatus(`${r.ticker} ${side === "short" ? "short " : ""}tracked — it now shows under Positions with live P&L in R.`, "ok");
-    });
+    wireTrackButton(
+      els.detailPanels,
+      r.ticker,
+      activePlan,
+      () => {
+        renderPositions();
+        setStatus(`${r.ticker} ${side === "short" ? "short " : ""}tracked — it now shows under Positions with live P&L in R.`, "ok");
+      },
+      // Snapshot the signal state at entry — the edge breakdown learns from it.
+      {
+        call: fc.call,
+        verdict: reco.verdict,
+        early: earlyOf(r.ticker)?.grade,
+        inst: instOf(r.ticker)?.rating,
+        tape: tape?.character,
+        regime: regime.light,
+        side,
+      },
+    );
+    wireAlertSetter(els.detailPanels, r.ticker, r.price);
     updateFlowStrip();
+  }
+
+  /** Small "alert me at $X" setter — fires during monitor passes, one-shot. */
+  function alertSetterHtml(ticker: string, price: number): string {
+    return `<div class="panel alert-panel"><h2>🔔 Price alert</h2>
+      <div class="al-row">
+        <label>Alert ${ticker} at $ <input class="al-price" type="number" step="0.01" min="0" value="${price.toFixed(2)}" /></label>
+        <button class="al-set ghost" type="button">Set alert</button>
+        <span class="muted al-hint">one-shot · checked on every monitor pass · direction auto (above/below now)</span>
+      </div></div>`;
+  }
+
+  function wireAlertSetter(container: HTMLElement, ticker: string, current: number): void {
+    const btn = container.querySelector<HTMLButtonElement>(".al-set");
+    const input = container.querySelector<HTMLInputElement>(".al-price");
+    if (!btn || !input) return;
+    btn.addEventListener("click", () => {
+      const target = Number(input.value);
+      if (!Number.isFinite(target) || target <= 0) return;
+      const alerts = loadAlerts();
+      alerts.push({
+        id: `${ticker}-${Date.now()}`,
+        symbol: ticker,
+        price: target,
+        dir: target >= current ? "above" : "below",
+      });
+      saveAlerts(alerts);
+      btn.textContent = "✓ Set";
+      btn.disabled = true;
+      setStatus(`Alert set: ${ticker} ${target >= current ? "≥" : "≤"} ${target.toFixed(2)} — the monitor will catch it.`, "ok");
+    });
   }
 
   function anchorPanel(r: ScanResult): string {

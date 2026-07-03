@@ -22,6 +22,8 @@ import {
   earlySignal,
   institutionalRead,
   nextSteps,
+  proveEarlySignal,
+  resampleWeekly,
   recommend,
   recoContextFromScan,
   runBacktest,
@@ -34,6 +36,7 @@ import {
   type ChosenAnchor,
   type MarketRegime,
   type ScanResult,
+  type SignalProof,
 } from "./core";
 import { VolumeShelfsChart, type ChartModel, type ChartOverlays } from "./chart/chart";
 import { PROVIDERS, getProvider, parseCsv, type Interval } from "./data";
@@ -44,7 +47,7 @@ import { coachPanelHtml } from "./coach-view";
 import { recoPanelHtml } from "./reco-view";
 import { shannonPanelHtml } from "./shannon-view";
 import { disciplinePanelHtml, finalCallPanelHtml } from "./decision-view";
-import { earlyPanelHtml } from "./early-view";
+import { earlyPanelHtml, proofPanelHtml } from "./early-view";
 import { anomalyPanelHtml, institutionalPanelHtml } from "./tape-view";
 import { celebrate } from "./celebrate";
 import { loadPositions } from "./journal-store";
@@ -519,7 +522,13 @@ function renderExploreReco(r: ScanResult | null): void {
     coachPanelHtml(nextSteps(reco, plan, r.price)) +
     anomalyPanelHtml(tape) +
     (state.candles.length ? institutionalPanelHtml(institutionalRead(state.candles)) : "") +
-    (state.candles.length ? earlyPanelHtml(earlySignal(state.candles)) : "") +
+    (state.candles.length
+      ? earlyPanelHtml(
+          earlySignal(state.candles),
+          state.candles.length >= 320 ? earlySignal(resampleWeekly(state.candles)) : null,
+        )
+      : "") +
+    proofPanelHtml(exploreProof(symbol)) +
     disciplinePanelHtml(disc) +
     (shan ? shannonPanelHtml(shan, r.price) : "") +
     confluencePanelHtml(r.confluence) +
@@ -527,8 +536,19 @@ function renderExploreReco(r: ScanResult | null): void {
     confirmationPanelHtml(r.confirmation) +
     tradePlanPanelHtml(activePlan);
   wirePositionSizer(els.exploreReco, activePlan);
-  wireTrackButton(els.exploreReco, symbol, activePlan, () =>
-    setStatus(`${symbol} ${side === "short" ? "short " : ""}tracked — see Scanner → Positions for live P&L in R.`, "ok"),
+  wireTrackButton(
+    els.exploreReco,
+    symbol,
+    activePlan,
+    () => setStatus(`${symbol} ${side === "short" ? "short " : ""}tracked — see Scanner → Positions for live P&L in R.`, "ok"),
+    {
+      call: fc.call,
+      verdict: reco.verdict,
+      early: state.candles.length ? earlySignal(state.candles)?.grade : undefined,
+      tape: tape?.character,
+      regime: regime.light,
+      side,
+    },
   );
   // One party per symbol per session — recompute() re-renders on every slider tweak.
   if ((fc.call === "GO" || fc.call === "GO-HALF") && !celebratedSymbols.has(symbol)) {
@@ -537,6 +557,20 @@ function renderExploreReco(r: ScanResult | null): void {
   }
 }
 const celebratedSymbols = new Set<string>();
+
+// The proof replay is O(n²)-ish; recompute() fires on every slider tweak, so
+// cache per (symbol, history length) and reuse.
+let proofKey = "";
+let proofValue: SignalProof | null = null;
+function exploreProof(symbol: string): SignalProof | null {
+  const key = `${symbol}:${state.candles.length}`;
+  if (key !== proofKey) {
+    proofKey = key;
+    const stride = Math.max(2, Math.floor((state.candles.length - 90) / 400));
+    proofValue = state.candles.length ? proveEarlySignal(state.candles, 20, 70, stride) : null;
+  }
+  return proofValue;
+}
 
 /** AVWAP line + ±1σ bands, the pinch AVWAPs, 50/200 MA and the trade levels. */
 function buildExploreOverlays(c: Candle[], anchorIndex: number, r: ScanResult): ChartOverlays {

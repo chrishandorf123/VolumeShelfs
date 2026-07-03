@@ -30,6 +30,8 @@ export interface Position {
   status: "open" | "closed";
   exitPrice?: number;
   closedAt?: number;
+  /** Snapshot of the signals firing at entry (fuel for the edge breakdown). */
+  context?: Record<string, string | undefined>;
 }
 
 export function sideOf(p: Position): Side {

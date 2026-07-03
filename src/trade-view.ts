@@ -79,12 +79,14 @@ export function wireTrackButton(
   symbol: string,
   plan: TradePlan | null,
   onTracked?: () => void,
+  context?: Record<string, string | undefined>,
 ): void {
   const btn = container.querySelector<HTMLButtonElement>(".ps-track");
   if (!btn || !plan) return;
   btn.addEventListener("click", () => {
     const shares = Number(container.querySelector(".ps-shares")?.textContent) || 1;
-    addPosition(openPosition(symbol, plan, shares, Date.now(), plan.entry, plan.side ?? "long"));
+    // Snapshot the signals firing right now — the edge breakdown learns from it.
+    addPosition({ ...openPosition(symbol, plan, shares, Date.now(), plan.entry, plan.side ?? "long"), context });
     btn.disabled = true;
     btn.textContent = "✓ Tracked";
     onTracked?.();
