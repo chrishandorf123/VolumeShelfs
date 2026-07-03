@@ -1,26 +1,37 @@
 import { describe, expect, it } from "vitest";
-import { parseGlobalQuote, parseIntradayQuote } from "./alphaVantage";
+import { easternToday, parseGlobalQuote, parseIntradayQuote } from "./alphaVantage";
+
+describe("easternToday", () => {
+  it("formats as YYYY-MM-DD in US/Eastern", () => {
+    // 2026-07-02 01:00 UTC is still 2026-07-01 evening in New York (EDT).
+    expect(easternToday(new Date("2026-07-02T01:00:00Z"))).toBe("2026-07-01");
+    expect(easternToday(new Date("2026-07-02T15:00:00Z"))).toBe("2026-07-02");
+  });
+});
 
 describe("parseGlobalQuote", () => {
+  const payload = {
+    "Global Quote": {
+      "01. symbol": "AAPL",
+      "05. price": "192.50",
+      "08. previous close": "190.00",
+      "10. change percent": "1.3158%",
+      "07. latest trading day": "2026-07-01",
+    },
+  };
+
   it("reads price, prev close and change percent", () => {
-    const q = parseGlobalQuote(
-      {
-        "Global Quote": {
-          "01. symbol": "AAPL",
-          "05. price": "192.50",
-          "08. previous close": "190.00",
-          "10. change percent": "1.3158%",
-          "07. latest trading day": "2026-07-01",
-        },
-      },
-      "aapl",
-    );
+    const q = parseGlobalQuote(payload, "aapl", "2026-07-01");
     expect(q.symbol).toBe("AAPL");
     expect(q.price).toBe(192.5);
     expect(q.prevClose).toBe(190);
     expect(q.changePct).toBeCloseTo(0.013158, 6);
     expect(q.day).toBe("2026-07-01");
-    expect(q.live).toBeUndefined();
+  });
+
+  it("is live only when the trading day is today (ET)", () => {
+    expect(parseGlobalQuote(payload, "AAPL", "2026-07-01").live).toBe(true);
+    expect(parseGlobalQuote(payload, "AAPL", "2026-07-02").live).toBe(false);
   });
 
   it("computes change when the provider omits the percent", () => {
@@ -29,6 +40,7 @@ describe("parseGlobalQuote", () => {
       "TST",
     );
     expect(q.changePct).toBeCloseTo(0.1, 6);
+    expect(q.live).toBe(false); // no trading day reported -> never claim live
   });
 });
 
@@ -44,7 +56,7 @@ describe("parseIntradayQuote", () => {
   };
 
   it("uses the newest bar as the live price with its timestamp", () => {
-    const q = parseIntradayQuote(json, "AAPL")!;
+    const q = parseIntradayQuote(json, "AAPL", "2026-07-01")!;
     expect(q).not.toBeNull();
     expect(q.price).toBe(193.6);
     expect(q.asOf).toBe("2026-07-01 15:55");
@@ -52,8 +64,14 @@ describe("parseIntradayQuote", () => {
     expect(q.live).toBe(true);
   });
 
+  it("does not claim live when the newest bar is a prior session (weekend/holiday)", () => {
+    const q = parseIntradayQuote(json, "AAPL", "2026-07-04")!;
+    expect(q.live).toBe(false);
+    expect(q.price).toBe(193.6); // price/asOf still reported honestly
+  });
+
   it("uses the prior session's last bar as the previous close for % change", () => {
-    const q = parseIntradayQuote(json, "AAPL")!;
+    const q = parseIntradayQuote(json, "AAPL", "2026-07-01")!;
     expect(q.prevClose).toBe(188);
     expect(q.changePct).toBeCloseTo((193.6 - 188) / 188, 6);
   });
@@ -70,7 +88,7 @@ describe("parseIntradayQuote", () => {
         "2026-07-01 15:55": { "4. close": "193.60" },
       },
     };
-    const q = parseIntradayQuote(oneDay, "AAPL")!;
+    const q = parseIntradayQuote(oneDay, "AAPL", "2026-07-01")!;
     expect(q.price).toBe(193.6);
     expect(q.prevClose).toBe(193.6); // no prior-day bar → change 0, not NaN
     expect(q.changePct).toBe(0);

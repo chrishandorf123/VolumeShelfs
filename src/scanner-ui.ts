@@ -12,6 +12,7 @@ import {
   pickTop,
   recoContextFromScan,
   recommend,
+  rescoreUniverse,
   scanTicker,
   scanUniverse,
   shannonRead,
@@ -101,6 +102,10 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
   let results: ScanResult[] = [];
   let selected: string | null = null;
   let chart: VolumeShelfsChart | null = null;
+  /** True while the Scanner tab is the visible view (gates monitor polling). */
+  let viewActive = false;
+  /** True while a live scan is fetching (monitor passes defer to it). */
+  let scanRunning = false;
 
   const els = {
     uniSource: $("uniSource"),
@@ -139,6 +144,12 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     flowStrip: $("flowStrip"),
   };
 
+  // ONE pacer for ALL provider traffic (scan passes, monitor quotes and any
+  // in-provider fallback calls), so overlapping loops can't multiply the
+  // user's calls/min budget. Recreated only when the rate input changes.
+  const currentCallsPerMin = () => Math.max(1, Math.min(1200, Number(els.callsPerMin.value) || 75));
+  let sharedPacer = new Pacer(minIntervalMs(currentCallsPerMin()));
+
   // Reco + plan are needed by the table, digest, CSV export and monitor; compute
   // each ticker's once per ranking pass instead of once per consumer.
   let recoCache = new Map<string, { reco: Recommendation; plan: TradePlan | null }>();
@@ -162,6 +173,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
   // Restore the saved watchlist + benchmark so users don't retype every time.
   els.tickers.value = localStorage.getItem("vs.tickers") ?? "";
   els.callsPerMin.value = localStorage.getItem("vs.callsPerMin") ?? "75";
+  sharedPacer = new Pacer(minIntervalMs(currentCallsPerMin())); // honour the restored rate
   const savedBench = localStorage.getItem("vs.bench");
   if (savedBench) els.benchmark.value = savedBench;
 
@@ -214,9 +226,10 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
   // ---- watchlist / universe helpers -------------------------------------
   refreshTickerCount();
   els.tickers.addEventListener("input", refreshTickerCount);
-  els.callsPerMin.addEventListener("change", () =>
-    localStorage.setItem("vs.callsPerMin", els.callsPerMin.value),
-  );
+  els.callsPerMin.addEventListener("change", () => {
+    localStorage.setItem("vs.callsPerMin", els.callsPerMin.value);
+    sharedPacer = new Pacer(minIntervalMs(currentCallsPerMin()));
+  });
   els.loadUniverse.addEventListener("click", () => {
     els.tickers.value = marketUniverse().join(" ");
     localStorage.setItem("vs.tickers", els.tickers.value);
@@ -269,7 +282,9 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     input.addEventListener("input", () => {
       config.weights[w.key] = Number(input.value);
       val.textContent = input.value;
-      if (results.length) rankAndRender();
+      // Weights only change the score arithmetic — re-rank the existing
+      // results; never re-run the (API-bound) universe scan from a slider.
+      if (results.length) rescoreAndRender();
     });
     wrap.append(label(w.label), input, val);
     els.weights.appendChild(wrap);
@@ -279,6 +294,11 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
   els.runScan.addEventListener("click", () => void run());
   els.exportCsv.addEventListener("click", exportResultsCsv);
   els.monitorNow.addEventListener("click", () => void runMonitor());
+  // One delegated click handler for all monitor rows, across every re-render.
+  els.monitorBody.addEventListener("click", (e) => {
+    const tr = (e.target as HTMLElement).closest<HTMLTableRowElement>("tr[data-ticker]");
+    if (tr?.dataset.ticker) select(tr.dataset.ticker);
+  });
   els.monitorAuto.checked = localStorage.getItem("vs.monAuto") === "1";
   els.monitorAuto.addEventListener("change", () => {
     localStorage.setItem("vs.monAuto", els.monitorAuto.checked ? "1" : "0");
@@ -330,7 +350,10 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
   let lastBenchmark = buildDemoBenchmark();
 
   async function run(): Promise<void> {
+    if (scanRunning) return;
+    scanRunning = true;
     els.runScan.disabled = true;
+    els.monitorNow.disabled = true; // scan and monitor share one API budget
     try {
       if (source === "demo") {
         lastInputs = buildDemoUniverse().map((u) => ({ ticker: u.ticker, candles: u.candles }));
@@ -340,13 +363,19 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
         await loadLiveUniverse();
       }
       rankAndRender();
+      resetMonitorState(); // new scan = new plans; old statuses/alerts don't apply
       syncMonitorVisibility();
       const pass = results.filter((r) => r.passedAll).length;
       setStatus(`Scanned ${results.length} · ${pass} A+ · ${results.length - pass} partial`, "ok");
     } catch (err) {
       setStatus(err instanceof Error ? err.message : String(err), "error");
     } finally {
+      scanRunning = false;
       els.runScan.disabled = false;
+      els.monitorNow.disabled = false;
+      // A checked auto-refresh toggle should start watching as soon as there
+      // is a live watchlist to watch (otherwise it could stay armed-but-idle).
+      scheduleMonitor();
     }
   }
 
@@ -365,20 +394,20 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     localStorage.setItem("vs.bench", benchSym);
 
     // Pace requests to the provider's per-minute limit so a big universe scan
-    // doesn't trip a 429. Each call is spaced ~60s / callsPerMin apart.
-    const callsPerMin = Math.max(1, Math.min(1200, Number(els.callsPerMin.value) || 75));
+    // doesn't trip a 429. Each call is spaced ~60s / callsPerMin apart, and the
+    // pacer is SHARED with the monitor so overlap can't exceed the budget.
+    const callsPerMin = currentCallsPerMin();
     localStorage.setItem("vs.callsPerMin", String(callsPerMin));
-    const pacer = new Pacer(minIntervalMs(callsPerMin));
     const etaMin = ((symbols.length + 1) / callsPerMin).toFixed(1);
 
-    await pacer.wait();
+    await sharedPacer.wait();
     setStatus(`Fetching benchmark ${benchSym}…`);
     lastBenchmark = await provider.fetchCandles({ symbol: benchSym, interval: "daily" as Interval }, apiKey || undefined);
 
     const inputs: ScanInput[] = [];
     let failed = 0;
     for (let i = 0; i < symbols.length; i++) {
-      await pacer.wait();
+      await sharedPacer.wait();
       setStatus(`Fetching ${symbols[i]} (${i + 1}/${symbols.length}) · ~${etaMin} min at ${callsPerMin}/min…`);
       try {
         const candles = await provider.fetchCandles({ symbol: symbols[i], interval: "daily" as Interval }, apiKey || undefined);
@@ -403,6 +432,13 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
       select(stillThere ? selected! : results[0].ticker);
     }
     updateFlowStrip();
+  }
+
+  /** Weight change: recompute scores + order only (analysis and recos are unchanged). */
+  function rescoreAndRender(): void {
+    results = rescoreUniverse(results, config.weights);
+    renderTable();
+    renderDigest();
   }
 
   // ---- "top trades right now" digest --------------------------------------
@@ -570,6 +606,15 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     if (source !== "live") stopMonitorTimer();
   }
 
+  /** New scan → new plans: old statuses, alerts and the stale table must go. */
+  function resetMonitorState(): void {
+    lastStatuses.clear();
+    changedThisPass.clear();
+    alertsFeed.length = 0;
+    els.monitorMeta.textContent = "";
+    els.monitorBody.innerHTML = `<div class="empty">Fresh scan — check prices to read the new plans intraday.</div>`;
+  }
+
   function stopMonitorTimer(): void {
     if (monitorTimer !== null) {
       clearTimeout(monitorTimer);
@@ -577,11 +622,13 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     }
   }
 
-  /** Re-arm the next auto-refresh pass if the toggle is on. */
+  /** Re-arm the next auto-refresh pass if the toggle is on and the tab is visible. */
   function scheduleMonitor(): void {
     stopMonitorTimer();
-    if (source === "live" && els.monitorAuto.checked) {
+    if (viewActive && source === "live" && els.monitorAuto.checked && results.length > 0) {
       monitorTimer = window.setTimeout(() => void runMonitor(), MONITOR_GAP_MS);
+      if (!els.monitorMeta.textContent.includes("auto in"))
+        els.monitorMeta.textContent += ` · auto in ${Math.round(MONITOR_GAP_MS / 1000)}s`;
     }
   }
 
@@ -598,7 +645,12 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
 
   async function runMonitor(): Promise<void> {
     if (monitorRunning) return;
-    if (source !== "live") {
+    if (scanRunning) {
+      scheduleMonitor(); // the scan owns the API budget right now — retry after
+      return;
+    }
+    if (!viewActive || source !== "live") {
+      if (!viewActive) return; // fired from a stale timer while the tab is hidden
       setStatus("Switch to “Ticker list → API” and run a live scan to monitor prices.", "error");
       return;
     }
@@ -620,55 +672,81 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
 
     monitorRunning = true;
     els.monitorNow.disabled = true;
+    els.runScan.disabled = true; // shared API budget — no scan mid-pass
     stopMonitorTimer();
     changedThisPass.clear();
-    const callsPerMin = Math.max(1, Math.min(1200, Number(els.callsPerMin.value) || 75));
-    const pacer = new Pacer(minIntervalMs(callsPerMin));
     const rows: MonitorRow[] = [];
-    let failed = 0;
+    const failures: Array<{ symbol: string; message: string }> = [];
     try {
       for (let i = 0; i < targets.length; i++) {
-        await pacer.wait();
+        // Re-check preconditions each iteration: the user may have left the
+        // tab or switched to demo while the pass was mid-flight.
+        if (!viewActive || source !== "live") break;
+        await sharedPacer.wait();
         els.monitorMeta.textContent = `checking ${targets[i].symbol} (${i + 1}/${targets.length})…`;
         try {
-          const q = await provider.fetchQuote(targets[i].symbol, apiKey || undefined);
+          // The pace hook lets the provider take a fresh slot if a quote needs
+          // a second HTTP request (e.g. the GLOBAL_QUOTE fallback).
+          const q = await provider.fetchQuote(targets[i].symbol, apiKey || undefined, () => sharedPacer.wait());
           const row = monitorRow(q, targets[i].plan);
           rows.push(row);
           trackStatusChange(row);
-        } catch {
-          failed += 1; // skip a failed quote; surfaced in the count
+        } catch (err) {
+          failures.push({
+            symbol: targets[i].symbol,
+            message: err instanceof Error ? err.message : String(err),
+          });
         }
-        renderMonitor(sortMonitorRows(rows), failed, targets.length);
       }
+      // Render once per pass (progress lives in the meta line above) — a
+      // per-quote rebuild is O(n²) DOM work for no extra information.
+      renderMonitor(sortMonitorRows(rows), failures, targets.length);
       const triggered = rows.filter((r) => r.status === "TRIGGERED" || r.status === "APPROACHING").length;
       setStatus(
-        `Monitor: ${rows.length} quoted${failed ? `, ${failed} skipped` : ""} · ${triggered} at/near a trigger.`,
-        "ok",
+        `Monitor: ${rows.length} quoted${failures.length ? `, ${failures.length} skipped` : ""} · ${triggered} at/near a trigger.`,
+        rows.length === 0 && failures.length > 0 ? "error" : "ok",
       );
       updateFlowStrip();
     } finally {
       monitorRunning = false;
       els.monitorNow.disabled = false;
-      scheduleMonitor(); // re-arm if auto-refresh is on
+      els.runScan.disabled = scanRunning;
+      // Re-arm the auto-refresh — unless the whole pass failed (bad key /
+      // exhausted budget), where hammering the API every 30s helps nobody.
+      if (rows.length > 0 || failures.length === 0) scheduleMonitor();
+      else stopMonitorTimer();
     }
   }
 
-  function renderMonitor(rows: MonitorRow[], failed: number, total: number): void {
-    // Freshness: show the most recent print's timestamp + whether it's a live
-    // intraday quote or a prior close (market closed / no intraday feed).
-    const stamps = rows.map((r) => r.asOf || r.day || "").filter(Boolean).sort();
-    const latest = stamps[stamps.length - 1] ?? "";
-    const anyLive = rows.some((r) => r.live);
-    const freshness = latest
-      ? ` · ${anyLive ? "live" : "close"} ${latest}`
+  function renderMonitor(rows: MonitorRow[], failures: Array<{ symbol: string; message: string }>, total: number): void {
+    // Freshness comes from the single most-recent row, so the live/close label
+    // and the timestamp can't be mixed from two different symbols.
+    const stampOf = (r: MonitorRow) => r.asOf || r.day || "";
+    const newest = rows.reduce<MonitorRow | null>(
+      (best, r) => (best === null || stampOf(r) > stampOf(best) ? r : best),
+      null,
+    );
+    const freshness = newest && stampOf(newest)
+      ? ` · ${newest.live ? "live" : "close"} ${stampOf(newest)}`
+      : "";
+    // Local wall-clock so the user can tell "old data" from "old check".
+    const checked = ` · checked ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+    const skipped = failures.length
+      ? ` · ${failures.length} skipped: ${failures.slice(0, 3).map((f) => f.symbol).join(", ")}${failures.length > 3 ? "…" : ""}`
       : "";
     els.monitorMeta.textContent = rows.length
-      ? `${rows.length}/${total} quoted${failed ? ` · ${failed} skipped` : ""}${freshness}`
+      ? `${rows.length}/${total} quoted${skipped}${freshness}${checked}`
       : "";
+    els.monitorMeta.title = failures.length ? failures.map((f) => `${f.symbol}: ${f.message}`).join("\n") : "";
     if (rows.length === 0) {
-      els.monitorBody.innerHTML = `<div class="empty">No quotes returned (check the key / rate limit).</div>`;
+      const first = failures[0];
+      els.monitorBody.innerHTML = `<div class="empty">No quotes returned${first ? ` — ${escapeHtml(`${first.symbol}: ${first.message}`)}` : " (check the key / rate limit)"}.</div>`;
       return;
     }
+    // A row is stale when its live print trails the newest live print by >10
+    // minutes (halted / thin names) — dim it and show its own time.
+    const liveTimes = rows.filter((r) => r.live && r.asOf).map((r) => Date.parse(r.asOf!));
+    const newestLive = liveTimes.length ? Math.max(...liveTimes) : NaN;
     const body = rows
       .map((r) => {
         const cls = r.status.toLowerCase();
@@ -676,12 +754,16 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
         const asOf = r.asOf ? ` title="${r.live ? "live" : "prior close"} · as of ${escapeHtml(r.asOf)}"` : "";
         const dot = r.live ? '<span class="mon-live" title="live intraday print">●</span> ' : "";
         const flash = changedThisPass.has(r.symbol) ? " mon-changed" : "";
-        return `<tr data-ticker="${r.symbol}" class="mon-row mon-${cls}${flash}">
+        const rowTs = r.live && r.asOf ? Date.parse(r.asOf) : NaN;
+        const isStale = Number.isFinite(newestLive) && Number.isFinite(rowTs) && newestLive - rowTs > 10 * 60_000;
+        const staleTag = isStale ? ` <small class="mon-asof">${escapeHtml(r.asOf!.slice(11))}</small>` : "";
+        const inR = Number.isFinite(r.toEntryR) ? ` <small class="muted">${Math.abs(r.toEntryR).toFixed(1)}R</small>` : "";
+        return `<tr data-ticker="${r.symbol}" class="mon-row mon-${cls}${flash}${isStale ? " mon-stalerow" : ""}">
           <td><span class="mon-badge mon-${cls}">${r.status}</span></td>
           <td class="tk">${r.symbol}</td>
-          <td${asOf}>${dot}${formatPrice(r.price)}</td>
+          <td${asOf}>${dot}${formatPrice(r.price)}${staleTag}</td>
           <td class="${chg}">${fmtPct(r.changePct)}</td>
-          <td>${monArrow(r.toEntry)}</td>
+          <td>${monArrow(r.toEntry)}${inR}</td>
           <td>${monArrow(r.toStop)}</td>
           <td>${monArrow(r.toT1)}</td>
           <td class="mon-note muted">${escapeHtml(r.note)}</td>
@@ -703,14 +785,12 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     els.monitorBody.innerHTML = `${feed}<table class="mon-table">
       <thead><tr>
         <th>Status</th><th>Ticker</th><th>Price</th><th>Today</th>
-        <th title="Distance to the entry trigger">→Entry</th>
+        <th title="Distance to the entry trigger (% of price, and in R — units of the plan's risk)">→Entry</th>
         <th title="Distance to the stop (invalidation)">→Stop</th>
         <th title="Distance to the first target">→T1</th>
         <th>Read</th>
       </tr></thead><tbody>${body}</tbody></table>`;
-    els.monitorBody.querySelectorAll<HTMLTableRowElement>("tr[data-ticker]").forEach((tr) => {
-      tr.addEventListener("click", () => select(tr.dataset.ticker!));
-    });
+    // Row clicks use one delegated listener (wired at init) — no per-render churn.
   }
 
   // ---- detail ------------------------------------------------------------
@@ -718,8 +798,11 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
   let detailOverride: ChosenAnchor | null = null;
 
   function select(ticker: string): void {
+    // A click can arrive from a stale monitor/digest row after a rescan —
+    // ignore tickers that are no longer in the results.
+    if (!results.some((x) => x.ticker === ticker)) return;
+    if (ticker !== selected) detailOverride = null; // reset only on a real switch
     selected = ticker;
-    detailOverride = null; // reset to the app's pick when switching tickers
     els.resultsBody.querySelectorAll("tr").forEach((tr) =>
       tr.classList.toggle("sel", (tr as HTMLTableRowElement).dataset.ticker === ticker),
     );
@@ -942,12 +1025,14 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
 
   return {
     activate() {
+      viewActive = true;
       if (results.length === 0) void run();
       else chart?.resize();
       syncMonitorVisibility();
       scheduleMonitor(); // resume auto-refresh if it was left on
     },
     deactivate() {
+      viewActive = false; // also breaks any in-flight monitor pass
       stopMonitorTimer(); // don't keep polling the API while the tab is hidden
     },
   };

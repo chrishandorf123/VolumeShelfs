@@ -53,6 +53,13 @@ describe("monitorRow status classification", () => {
     expect(monitorRow(quote(90), plan()).status).toBe("STOPPED");
   });
 
+  it("expresses distance-to-entry in R units of the plan's risk", () => {
+    const r = monitorRow(quote(97), plan()); // ~3.09% below entry, risk 6%
+    expect(r.toEntryR).toBeCloseTo(r.toEntry / 0.06, 8);
+    const noRisk = monitorRow(quote(97), plan({ riskPct: 0 }));
+    expect(Number.isNaN(noRisk.toEntryR)).toBe(true);
+  });
+
   it("carries the quote's change and day through", () => {
     const q: Quote = { symbol: "AAPL", price: 100, prevClose: 98, changePct: 0.0204, day: "2026-07-01" };
     const r = monitorRow(q, plan());

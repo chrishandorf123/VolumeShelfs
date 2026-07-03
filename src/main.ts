@@ -647,8 +647,12 @@ function initTabs(): void {
       tabs.forEach((t) => t.classList.toggle("active", t === tab));
       viewExplore.hidden = view !== "explore";
       viewScanner.hidden = view !== "scanner";
-      if (view === "scanner") scanner.activate();
-      else chart.resize();
+      if (view === "scanner") {
+        scanner.activate();
+      } else {
+        scanner.deactivate(); // stop the monitor's auto-refresh polling
+        chart.resize();
+      }
     });
   });
 }

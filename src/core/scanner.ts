@@ -513,18 +513,31 @@ export function scanUniverse(
 ): ScanResult[] {
   const results = inputs.map((input) => scanTicker(input, benchmark, config));
   if (results.length === 0) return results;
+  return results.sort(rankCompare);
+}
 
-  const hardGates = (r: ScanResult) =>
-    (r.gates.liquidity.pass ? 1 : 0) +
-    (r.gates.trend.pass ? 1 : 0) +
-    (r.gates.rs.pass ? 1 : 0);
-  return results.sort((a, b) => {
-    if (a.passedAll !== b.passedAll) return a.passedAll ? -1 : 1;
-    const ha = hardGates(a);
-    const hb = hardGates(b);
-    if (ha !== hb) return hb - ha;
-    return b.score - a.score;
-  });
+const hardGates = (r: ScanResult) =>
+  (r.gates.liquidity.pass ? 1 : 0) +
+  (r.gates.trend.pass ? 1 : 0) +
+  (r.gates.rs.pass ? 1 : 0);
+
+function rankCompare(a: ScanResult, b: ScanResult): number {
+  if (a.passedAll !== b.passedAll) return a.passedAll ? -1 : 1;
+  const ha = hardGates(a);
+  const hb = hardGates(b);
+  if (ha !== hb) return hb - ha;
+  return b.score - a.score;
+}
+
+/**
+ * Re-score an already-scanned universe under new ranking weights, without
+ * re-running the (expensive) per-ticker analysis — weights only affect the
+ * final score arithmetic, so a weight-slider tweak shouldn't rescan anything.
+ */
+export function rescoreUniverse(results: ScanResult[], weights: ScanWeights): ScanResult[] {
+  return results
+    .map((r) => ({ ...r, score: scoreOf(r.factors, weights) }))
+    .sort(rankCompare);
 }
 
 // `chooseScanAnchor` retained as the election fallback; re-exported for callers.

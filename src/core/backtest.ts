@@ -323,11 +323,16 @@ export function runBacktest(candles: Candle[], config: BacktestConfig = DEFAULT_
   let signalCount = 0;
   let usableBars = 0;
   const firstUsable = Math.max(200, config.zLookback + 1);
+  // One position at a time: consecutive-bar signals inside an open trade are
+  // the SAME episode, not independent samples — counting them all would
+  // overstate n and make the Wilson CI (and Kelly sizing) overconfident.
+  let nextEligible = firstUsable;
   for (let t = firstUsable; t < n - 1; t++) {
     usableBars += 1;
     const ev = evalBar(t);
     if (!ev.active) continue;
     signalCount += 1;
+    if (t < nextEligible) continue; // still inside the previous trade's window
     // Entry at next bar open; stop below the shelf; T1 = break-even; T2 = target.
     const entryIndex = t + 1;
     const entry = candles[entryIndex].open;
@@ -335,8 +340,12 @@ export function runBacktest(candles: Candle[], config: BacktestConfig = DEFAULT_
     const perShareRisk = entry - stop;
     if (!(perShareRisk > 0)) continue;
     const t1 = opVwap[t];
+    // A gap open at/through T1 leaves nothing to trade toward — recording it
+    // as a "hit" would credit the win column with trades that made nothing.
+    if (!(entry < t1)) continue;
     const t2 = ev.target;
     const sim = simulate(candles, entryIndex, entry, t1, t2, stop, config);
+    nextEligible = sim.exitIndex + 1;
     trades.push({
       entryIndex,
       entryTime: candles[entryIndex].time,
@@ -405,7 +414,6 @@ function simulate(candles: Candle[], entryIndex: number, entry: number, t1: numb
   const risk = entry - stop;
   let hitT1 = false;
   let barsToT1: number | null = null;
-  let hitT2 = false;
   let hitStop = false;
   let stopBar: number | null = null;
   let mae = 0;
@@ -429,8 +437,21 @@ function simulate(candles: Candle[], entryIndex: number, entry: number, t1: numb
       barsToT1 = k;
       exitIndex = entryIndex + k;
       exitPrice = t1;
-      if (t2 !== null && bar.high >= t2) hitT2 = true;
       break;
+    }
+  }
+  // T2 is measured independently of the T1 exit: did price print T2 within the
+  // window before the stop traded? (Same-bar stop + T2 counts as stopped —
+  // consistent with the conservative stop-first rule above.)
+  let hitT2 = false;
+  if (t2 !== null) {
+    for (let k = 0; k <= config.timeStopBars && entryIndex + k < n; k++) {
+      const bar = candles[entryIndex + k];
+      if (bar.low <= stop) break;
+      if (bar.high >= t2) {
+        hitT2 = true;
+        break;
+      }
     }
   }
   // Whipsaw: stopped, but T1 would have printed within the remaining window.

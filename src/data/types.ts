@@ -39,8 +39,12 @@ export interface DataProvider {
   /** Short note rendered under the provider in the UI. */
   readonly note?: string;
   fetchCandles(req: DataRequest, apiKey?: string): Promise<Candle[]>;
-  /** Optional live-quote fetch (1 call); enables the intraday watchlist monitor. */
-  fetchQuote?(symbol: string, apiKey?: string): Promise<Quote>;
+  /**
+   * Optional live-quote fetch; enables the intraday watchlist monitor.
+   * Implementations that may issue more than one HTTP request per quote must
+   * `await pace?.()` before each extra request so the caller's rate limit holds.
+   */
+  fetchQuote?(symbol: string, apiKey?: string, pace?: () => Promise<void>): Promise<Quote>;
 }
 
 export class DataError extends Error {

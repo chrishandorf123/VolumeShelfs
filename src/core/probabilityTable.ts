@@ -99,7 +99,9 @@ function baseRateForMove(candles: Candle[], config: BacktestConfig, movePct: num
     if (regime && trend[t] !== regime) continue;
     total += 1;
     const target = candles[t].close * (1 + movePct);
-    for (let k = 1; k <= config.timeStopBars && t + k < n; k++) {
+    // The trade sim enters at t+1 and scans k=0..timeStopBars (21 bars, t+1..t+21);
+    // the control must see the same number of forward bars or it biases toward edge.
+    for (let k = 1; k <= config.timeStopBars + 1 && t + k < n; k++) {
       if (candles[t + k].high >= target) {
         hits += 1;
         break;

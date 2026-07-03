@@ -23,6 +23,9 @@ export interface MonitorRow {
   status: MonitorStatus;
   /** Signed distance to entry as a fraction of price (positive = entry above). */
   toEntry: number;
+  /** Distance to entry in R (units of the plan's risk) — 0.4R is "close" on a
+   * tight plan and "far" on a wide one, which a raw % hides. NaN if risk unknown. */
+  toEntryR: number;
   /** Signed distance to stop as a fraction (negative = stop below). */
   toStop: number;
   /** Signed distance to T1 as a fraction. */
@@ -52,6 +55,7 @@ export function monitorRow(quote: Quote, plan: TradePlan): MonitorRow {
   const toEntry = pct(p, plan.entry);
   const toStop = pct(p, plan.stop);
   const toT1 = pct(p, plan.t1);
+  const toEntryR = plan.riskPct > 0 ? toEntry / plan.riskPct : NaN;
 
   let status: MonitorStatus;
   let note: string;
@@ -81,6 +85,7 @@ export function monitorRow(quote: Quote, plan: TradePlan): MonitorRow {
     changePct: quote.changePct,
     status,
     toEntry,
+    toEntryR,
     toStop,
     toT1,
     day: quote.day,

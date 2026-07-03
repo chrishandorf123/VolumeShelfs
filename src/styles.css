@@ -1956,3 +1956,10 @@ table.mon-table td.mon-note {
 .handoff.ok b {
   color: var(--up);
 }
+.mon-asof {
+  color: #f5c842;
+  font-size: 9.5px;
+}
+.mon-row.mon-stalerow td {
+  opacity: 0.75;
+}
