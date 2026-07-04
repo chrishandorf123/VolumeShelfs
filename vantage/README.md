@@ -1,6 +1,13 @@
-# VANTAGE 5.2 — Cold Call Command
+# VANTAGE 5.3 — Cold Call Command
 
 Single-file app (`index.html`) — no build step. Deploy anywhere that serves static files.
+
+## New in 5.3
+
+- **Your opener, personalized ×40**: Chris's real opener ("…I know I'm catching you out of the blue…") is now the FIRST opener on every persona — the "think X, Y, Z" line and closing question tuned to what that persona owns (CFO hears ROI and payback; Quality hears travelers and audit records; IT hears composable vs. monolith). Hub-specific persona variants got it too.
+- **Objection drill learns you**: every ✓/✕ is remembered. Weak spots (≥40% miss rate) come up first next drill, are flagged on the card ("WEAK SPOT · MISSED n×"), and the debrief lists your top three.
+- **SKIP in live calls** (`S`): bad number / wrong person — advance without polluting your dial stats.
+- **Targets sort by NEXT DUE**: overdue first, with due date and LATE flag on every row.
 
 ## New in 5.2 — the cadence runs your day
 
