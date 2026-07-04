@@ -3017,3 +3017,17 @@ table.results thead th.tbl-sort.on {
 .ind-ind {
   font-size: 10px;
 }
+
+/* Inline text-button (e.g. "Clear filters" in the empty results state). */
+.link-btn {
+  background: none;
+  border: none;
+  color: #5b8def;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}
+.link-btn:hover {
+  color: #7ea6ff;
+}

@@ -81,6 +81,7 @@ import { celebrate } from "./celebrate";
 import { confirmationPanelHtml, confluencePanelHtml, thesisPanelHtml } from "./thesis-view";
 import { tradePlanPanelHtml, wirePositionSizer } from "./trade-view";
 import { registerChatContext } from "./chat/context";
+import { downloadBackup, importBackup } from "./backup";
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -216,6 +217,9 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     tblVerdict: $<HTMLSelectElement>("tblVerdict"),
     tblGates: $<HTMLSelectElement>("tblGates"),
     tblCount: $("tblCount"),
+    backupBtn: $<HTMLButtonElement>("backupBtn"),
+    restoreBtn: $<HTMLButtonElement>("restoreBtn"),
+    restoreInput: $<HTMLInputElement>("restoreInput"),
   };
   /** Active sector filter for the results table (null = all). */
   let sectorFilter: string | null = null;
@@ -517,6 +521,15 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
   els.tblSearch.addEventListener("input", renderTable);
   els.tblVerdict.addEventListener("change", renderTable);
   els.tblGates.addEventListener("change", renderTable);
+  function clearTableFilters(): void {
+    els.tblSearch.value = "";
+    els.tblVerdict.value = "";
+    els.tblGates.value = "0";
+    els.onlyPass.checked = false;
+    sectorFilter = null;
+    renderSectorBoard();
+    renderTable();
+  }
   // Sortable headers: text/rank columns start ascending, numbers highest-first;
   // click again to reverse, once more to restore the scan's own ranking.
   els.table.querySelectorAll<HTMLElement>("th[data-tsort]").forEach((th) => {
@@ -532,6 +545,26 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
       renderTable();
     });
   });
+  // ---- backup / restore (never lose your data to a port or browser change) --
+  els.backupBtn.addEventListener("click", () => {
+    downloadBackup();
+    setStatus("Backup downloaded — keep it safe. Restore it any time to bring everything back.", "ok");
+  });
+  els.restoreBtn.addEventListener("click", () => els.restoreInput.click());
+  els.restoreInput.addEventListener("change", () => {
+    const file = els.restoreInput.files?.[0];
+    if (!file) return;
+    file
+      .text()
+      .then((text) => {
+        const n = importBackup(text);
+        setStatus(`Restored ${n} settings from backup — reloading…`, "ok");
+        setTimeout(() => location.reload(), 700);
+      })
+      .catch((err) => setStatus(err instanceof Error ? err.message : String(err), "error"))
+      .finally(() => (els.restoreInput.value = ""));
+  });
+
   els.runScan.addEventListener("click", () => void run());
   els.exportCsv.addEventListener("click", exportResultsCsv);
   els.monitorNow.addEventListener("click", () => void runMonitor());
@@ -943,6 +976,17 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
     const total = els.onlyPass.checked ? results.filter((r) => r.passedAll).length : results.length;
     els.tblCount.textContent = results.length ? `${rows.length} of ${total} shown` : "";
     syncTableHead();
+    // Distinguish "no scan yet" from "a filter hid everything" — the old code
+    // always said "Run a scan…", which read as "nothing ran / data gone" even
+    // when a scan HAD run and a filter was just excluding all rows.
+    const filtersActive =
+      els.onlyPass.checked || !!els.tblSearch.value.trim() || !!els.tblVerdict.value || Number(els.tblGates.value) > 0 || !!sectorFilter;
+    if (results.length > 0 && rows.length === 0 && filtersActive) {
+      els.resultsEmpty.innerHTML = `Your scan found <b>${results.length}</b> names, but the filters above hide them all. <button type="button" id="clearFilters" class="link-btn">Clear filters</button>`;
+      els.resultsEmpty.querySelector<HTMLButtonElement>("#clearFilters")?.addEventListener("click", clearTableFilters);
+    } else {
+      els.resultsEmpty.textContent = "Run a scan to see ranked candidates.";
+    }
     els.resultsEmpty.hidden = rows.length > 0;
     els.table.hidden = rows.length === 0;
     els.resultsBody.innerHTML = rows

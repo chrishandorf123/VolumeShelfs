@@ -207,6 +207,11 @@
           <div class="control control-action">
             <button id="exportCsv" class="ghost" title="Download the ranked results as CSV">Export CSV</button>
           </div>
+          <div class="control control-action">
+            <button id="backupBtn" class="ghost" title="Download ALL your app data (positions, watchlist, keys, settings) to a file — restore it any time, on any port or computer">💾 Backup</button>
+            <button id="restoreBtn" class="ghost" title="Load a backup file to restore your positions, watchlist and settings">Restore</button>
+            <input id="restoreInput" type="file" accept="application/json,.json" hidden />
+          </div>
           <label class="chk apex"><input type="checkbox" id="onlyPass" /> A+ only (all gates)</label>
         </section>
 
