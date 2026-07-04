@@ -845,13 +845,47 @@ details.panel > *:not(summary) {
   display: flex;
   flex: 1 1 auto;
   min-height: 0;
+  position: relative; /* anchors the detail-toggle button */
 }
 
+/* The results table has many columns, so give it the larger share by default
+ * (~58%); the detail panel keeps enough width for the plan + chart. */
 .results-pane {
-  flex: 1 1 50%;
+  flex: 1.35 1 0;
   min-width: 0;
   overflow: auto;
   border-right: 1px solid var(--border);
+}
+.detail-pane {
+  flex: 1 1 0;
+}
+
+/* Toggle: hide the detail panel entirely so the table goes full-width. The
+ * button is pinned to the pane boundary and always reachable in both states.
+ * Collapsing NEVER touches the loaded scan — it's pure layout. */
+.detail-toggle {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 6;
+  border: 1px solid rgba(91, 141, 239, 0.5);
+  background: var(--panel-2);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 4px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.detail-toggle:hover {
+  border-color: rgba(91, 141, 239, 0.9);
+}
+.scanner-workspace.detail-collapsed .detail-pane {
+  display: none;
+}
+.scanner-workspace.detail-collapsed .results-pane {
+  flex-basis: 100%;
+  border-right: none;
 }
 
 .results-empty {
@@ -973,7 +1007,6 @@ td.tk {
 
 /* ---- detail pane ---- */
 .detail-pane {
-  flex: 1 1 50%;
   min-width: 0;
   display: flex;
   flex-direction: column;

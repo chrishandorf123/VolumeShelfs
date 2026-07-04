@@ -350,6 +350,24 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
   scanMaxBtn.addEventListener("click", () => applyScanFocus(!scanWorkspace?.classList.contains("chart-max")));
   if (localStorage.getItem("vs.focusScan") === "1") applyScanFocus(true);
 
+  // Wide-table toggle: hide the detail panel so the results table gets the
+  // full width (the panel covers half the list otherwise). Pure layout — the
+  // loaded scan is untouched. State persists across sessions.
+  const detailToggle = $<HTMLButtonElement>("detailToggle");
+  const applyWideTable = (on: boolean) => {
+    scanWorkspace?.classList.toggle("detail-collapsed", on);
+    detailToggle.textContent = on ? "⇤ Show plan" : "⇥ Wide table";
+    detailToggle.title = on
+      ? "Show the detail panel again"
+      : "Hide the detail panel to see the full results table (your data stays loaded)";
+    localStorage.setItem("vs.wideTable", on ? "1" : "0");
+    if (!on) chart?.resize();
+  };
+  detailToggle.addEventListener("click", () =>
+    applyWideTable(!scanWorkspace?.classList.contains("detail-collapsed")),
+  );
+  if (localStorage.getItem("vs.wideTable") === "1") applyWideTable(true);
+
   // ---- universe source toggle -------------------------------------------
   els.uniSource.querySelectorAll<HTMLButtonElement>(".seg-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
