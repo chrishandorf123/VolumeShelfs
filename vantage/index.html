@@ -290,9 +290,10 @@ const AppState = {
   customObjections:[],
   personaEdits:{},       // idx -> partial persona
   blocks:[],             // custom board blocks {id,type,title,content,color}
+  callLog:[],            // every dispositioned dial {ts,date,name,company,targetId,disp,sec}
   loaded:false,
 };
-const KEYS=["settings","targets","stats","templates","cadences","customObjections","personaEdits","blocks"];
+const KEYS=["settings","targets","stats","templates","cadences","customObjections","personaEdits","blocks","callLog"];
 async function loadState(){
   for(const k of KEYS){const v=await store.get(k);if(v!=null)AppState[k]=v;}
   AppState.loaded=true;
@@ -300,6 +301,111 @@ async function loadState(){
 function saveState(k){store.set(k,AppState[k])}
 function getTemplates(){return (AppState.templates&&AppState.templates.length)?AppState.templates:DEFAULT_TEMPLATES}
 function getCadences(){return AppState.cadences||[DEFAULT_CADENCE]}
+function addDays(dateStr,n){
+  const [y,m,d]=(dateStr||todayKey()).split("-").map(Number);
+  const dt=new Date(y,(m||1)-1,(d||1)+n);
+  return dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-"+String(dt.getDate()).padStart(2,"0");
+}
+function goalPerDay(){
+  const m=AppState.settings.meetingsPerWeek||5;
+  return Math.ceil(Math.ceil(m/(0.10*0.68*0.22))/5);  // same funnel midpoints as the Board math
+}
+function dialStreak(){
+  const goal=goalPerDay(),byDate={};
+  AppState.stats.forEach(s=>byDate[s.date]=s.dials||0);
+  let n=(byDate[todayKey()]||0)>=goal?1:0;
+  for(let i=1;i<180;i++){
+    const dt=new Date();dt.setDate(dt.getDate()-i);
+    if(dt.getDay()===0||dt.getDay()===6)continue;   // weekends neither count nor break
+    const key=dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-"+String(dt.getDate()).padStart(2,"0");
+    if((byDate[key]||0)>=goal)n++;else break;
+  }
+  return n;
+}
+function logCall(rec){
+  AppState.callLog.push(rec);
+  if(AppState.callLog.length>1500)AppState.callLog.splice(0,AppState.callLog.length-1500);
+  saveState("callLog");
+}
+/* ---- cadence engine: what is DUE today, per target ---- */
+function cadenceDue(){
+  const cad=getCadences()[0];
+  const today=todayKey();
+  const due={calls:[],touches:[]};
+  AppState.targets.forEach(t=>{
+    if(!(t.status==="QUEUE"||t.status==="WORKING"))return;
+    if(t.cbDate&&t.cbDate<=today){
+      due.calls.push({t,label:"Callback they asked for ("+t.cbDate+")",cb:true,overdue:t.cbDate<today});
+      return;
+    }
+    const steps=cad.steps,touch=t.touches||0;
+    if(!steps.length||touch>=steps.length)return;      // cadence complete
+    const step=steps[touch];
+    let dueDate;
+    if(touch===0)dueDate=t.createdAt||today;
+    else dueDate=addDays(t.lastTouch||t.createdAt||today,Math.max(0,step.day-steps[touch-1].day));
+    if(dueDate>today)return;
+    const item={t,step,label:"D"+step.day+" · "+step.label,overdue:dueDate<today};
+    if(step.ch==="call")due.calls.push(item);else due.touches.push(item);
+  });
+  return due;
+}
+function markTouchDone(t){
+  t.touches=(t.touches||0)+1;t.lastTouch=todayKey();
+  if(t.status==="QUEUE")t.status="WORKING";
+  saveState("targets");
+}
+/* ---- tiny CSV parser (quotes, CRLF, auto delimiter) ---- */
+function csvParse(text){
+  const firstLine=(text.split(/\r?\n/)[0]||"");
+  const delim=[["\t"],[";"],[","]].map(([d])=>[d,firstLine.split(d).length]).sort((a,b)=>b[1]-a[1])[0][0];
+  const rows=[];let row=[],cell="",inQ=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(inQ){
+      if(c==='"'){if(text[i+1]==='"'){cell+='"';i++}else inQ=false}
+      else cell+=c;
+    }else if(c==='"')inQ=true;
+    else if(c===delim){row.push(cell);cell=""}
+    else if(c==="\n"||c==="\r"){
+      if(c==="\r"&&text[i+1]==="\n")i++;
+      row.push(cell);cell="";
+      if(row.some(x=>x.trim()!==""))rows.push(row);
+      row=[];
+    }else cell+=c;
+  }
+  row.push(cell);
+  if(row.some(x=>x.trim()!==""))rows.push(row);
+  return rows;
+}
+function mapCsvTargets(text){
+  const rows=csvParse(text);
+  if(!rows.length)return{fields:null,items:[]};
+  const heads=rows[0].map(h=>h.trim().toLowerCase());
+  const find=(...names)=>heads.findIndex(h=>names.some(n=>h===n||h.includes(n)));
+  const col={
+    first:find("first name","firstname","first"),
+    last:find("last name","lastname","last"),
+    name:find("full name","contact name","name","contact"),
+    company:find("company","account","organization","organisation","employer"),
+    title:find("job title","title","role","position"),
+    phone:find("phone","mobile","direct","number","tel"),
+    notes:find("notes","comments","description","trigger"),
+  };
+  const hasHeader=col.name>=0||col.company>=0||col.first>=0||col.phone>=0;
+  const body=hasHeader?rows.slice(1):rows;
+  const items=body.map(r=>{
+    const get=i=>i>=0&&r[i]!=null?String(r[i]).trim():"";
+    let name;
+    if(hasHeader){
+      name=get(col.name)||[get(col.first),get(col.last)].filter(Boolean).join(" ");
+      return{name,company:get(col.company),title:get(col.title),phone:get(col.phone),notes:get(col.notes)};
+    }
+    return{name:(r[0]||"").trim(),company:(r[1]||"").trim(),title:(r[2]||"").trim(),phone:(r[3]||"").trim(),notes:(r[4]||"").trim()};
+  }).filter(x=>x.name||x.company);
+  return{hasHeader,items};
+}
+function telHref(phone){return "tel:"+String(phone||"").replace(/[^+\d]/g,"")}
 function todayStats(){
   let t=AppState.stats.find(s=>s.date===todayKey());
   if(!t){t=blankDay();AppState.stats.push(t)}
@@ -509,6 +615,8 @@ function paletteItems(go){
   items.push({t:"DO",c:"var(--go)",label:"ADD TARGET",sub:"new prospect straight into the queue",run:()=>go("targets",{modal:"new"})});
   items.push({t:"DO",c:"var(--go)",label:"DRILL OBJECTIONS",sub:"flashcard reps until the tracks are automatic",run:()=>go("objections",{drill:true})});
   items.push({t:"DO",c:"var(--go)",label:"BUILD A BLOCK",sub:"pin a script / checklist / links to the board",run:()=>go("forge","blocks")});
+  items.push({t:"DO",c:"var(--go)",label:"IMPORT TARGETS (CSV)",sub:"paste a spreadsheet or CRM export",run:()=>go("targets",{import:true})});
+  items.push({t:"DO",c:"var(--go)",label:"TODAY'S DUE LIST",sub:"what the cadence says to do right now",run:()=>go("board")});
   items.push({t:"DO",c:"var(--go)",label:"DOWNLOAD BACKUP (JSON)",sub:"targets · stats · templates · everything",run:()=>exportBackup()});
   D.PERSONAS.forEach((p,i)=>items.push({t:"PERSONA",c:p.c||"var(--steel)",label:p.title,sub:(p.cares||[""])[0],run:()=>go("playbook",{tab:"personas",sel:i})}));
   D.COMPETITORS.forEach((c,i)=>items.push({t:"BATTLE",c:c.c,label:c.n,sub:c.t,run:()=>go("playbook",{tab:"battle",sel:i})}));
@@ -630,6 +738,39 @@ function CustomBlock({b,onDelete}){
       b.type==="checklist"&&h("button",{className:"btn sm ghost",onClick:()=>save(items.map(x=>({...x,done:false})))},"Reset"),
       h("button",{className:"btn sm ghost",onClick:onDelete},"✕ Remove")));
 }
+function TodayQueue({go,onChange}){
+  const due=cadenceDue();
+  const total=due.calls.length+due.touches.length;
+  const overdue=[...due.calls,...due.touches].filter(x=>x.overdue).length;
+  if(!AppState.targets.length)return null;
+  return h(Blk,{title:"THE LINE — DUE TODAY",tag:total?String(total)+" DUE":"CLEAR",color:total?"var(--sig)":"var(--go)",style:{marginBottom:16}},
+    !total?h("div",{className:"mono dim",style:{fontSize:11,padding:"4px 0"}},"Cadence clear ✓ — every target is on schedule. Add fresh targets or run a freestyle block."):
+    h("div",{className:"grid g2",style:{gap:14}},
+      h("div",null,
+        h("div",{className:"row",style:{marginBottom:8}},
+          h("span",{className:"eyebrow",style:{color:"var(--sig)"}},"📞 CALLS DUE ("+due.calls.length+")"),
+          overdue>0&&h("span",{className:"stamp",style:{fontSize:8,color:"var(--alarm)"}},overdue+" OVERDUE"),
+          h("div",{className:"grow"}),
+          due.calls.length>0&&h("button",{className:"btn sm primary",onClick:()=>go("dial",{queue:due.calls.map(x=>x.t.id)})},"▶ DIAL THE DUE LIST")),
+        due.calls.length?due.calls.slice(0,8).map((x,i)=>h("div",{key:x.t.id,className:"row",style:{padding:"5px 0",borderBottom:"1px solid var(--hair)",gap:8}},
+          h("b",{style:{fontSize:12,flexShrink:0}},x.t.name||x.t.company),
+          h("span",{className:"mono dim grow",style:{fontSize:9.5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},x.label),
+          x.overdue&&h("span",{className:"stamp",style:{fontSize:7.5,color:"var(--alarm)"}},"LATE"),
+          x.cb&&h("span",{className:"stamp",style:{fontSize:7.5,color:"var(--steel)"}},"CALLBACK")))
+        :h("div",{className:"mono dim",style:{fontSize:10.5}},"No calls due."),
+        due.calls.length>8&&h("div",{className:"mono dim",style:{fontSize:9.5,marginTop:4}},"+"+(due.calls.length-8)+" more in the dial queue")),
+      h("div",null,
+        h("div",{className:"eyebrow",style:{marginBottom:8}},"✉️ OTHER TOUCHES DUE ("+due.touches.length+")"),
+        due.touches.length?due.touches.slice(0,8).map((x)=>h("div",{key:x.t.id,className:"row",style:{padding:"5px 0",borderBottom:"1px solid var(--hair)",gap:8}},
+          h("span",{style:{fontSize:13,flexShrink:0}},CH_META[x.step.ch]?CH_META[x.step.ch].i:"•"),
+          h("b",{style:{fontSize:12,flexShrink:0}},x.t.name||x.t.company),
+          h("span",{className:"mono dim grow",style:{fontSize:9.5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},x.label),
+          x.overdue&&h("span",{className:"stamp",style:{fontSize:7.5,color:"var(--alarm)"}},"LATE"),
+          h("button",{className:"btn sm",title:"Open the linked template with this target filled in",onClick:()=>go("messages",{sel:x.step.tpl||undefined,target:x.t.id})},"OPEN"),
+          h("button",{className:"btn sm go",title:"Mark touch done",onClick:()=>{markTouchDone(x.t);onChange()}},"✓")))
+        :h("div",{className:"mono dim",style:{fontSize:10.5}},"No email / LinkedIn / VM touches due."),
+        due.touches.length>8&&h("div",{className:"mono dim",style:{fontSize:9.5,marginTop:4}},"+"+(due.touches.length-8)+" more"))));
+}
 function TBoard({go}){
   const [,force]=useState(0);
   useEffect(()=>{const f=()=>force(x=>x+1);window.addEventListener("v5stats",f);const iv=setInterval(f,30000);return()=>{window.removeEventListener("v5stats",f);clearInterval(iv)}},[]);
@@ -642,6 +783,7 @@ function TBoard({go}){
       h("h1",null,"Line Board"),
       h("span",{className:"stamp",style:{color:cw.c,borderColor:cw.c}},"● "+cw.label),
       h("span",{className:"mono dim",style:{fontSize:10}},cw.note)),
+    h(TodayQueue,{go,onChange:()=>force(x=>x+1)}),
     h("div",{className:"grid g4",style:{marginBottom:16}},
       h(StatPill,{label:"DIALS TODAY",value:t.dials,color:"var(--ink)",sub:"raw attempts"}),
       h(StatPill,{label:"CONNECTS",value:t.connects,color:"var(--steel)",sub:connectRate+"% connect rate · bench 8–12%"}),
@@ -708,9 +850,15 @@ function ObjOverlay({onClose}){
           o.t2&&h(CopyBit,{text:o.t2},h("div",{style:{fontSize:12,lineHeight:1.6}},h("b",{style:{color:"var(--steel)",fontFamily:"var(--mono)",fontSize:9}},"TRACK 2 · "),o.t2)))),
         !hits.length&&h("div",{className:"mono dim",style:{padding:20,textAlign:"center"}},"No match — improvise: validate, mirror their last 3 words, then ask a How/What question."))));
 }
-function DialSetup({onStart}){
+function DialSetup({onStart,initialPicked}){
   const queue=AppState.targets.filter(t=>t.status==="QUEUE"||t.status==="WORKING");
-  const [picked,setPicked]=useState(queue.map(t=>t.id));
+  const [picked,setPicked]=useState(()=>{
+    if(initialPicked&&initialPicked.length){
+      const valid=initialPicked.filter(id=>queue.some(t=>t.id===id));
+      if(valid.length)return valid;
+    }
+    return queue.map(t=>t.id);
+  });
   useHotkeys(e=>{
     const k=e.key.toLowerCase();
     if(k==="f"){onStart([]);return true}
@@ -754,6 +902,7 @@ function LiveCall({queueIds,onEnd}){
   const [notes,setNotes]=useState("");
   const [log,setLog]=useState([]);
   const [booked,setBooked]=useState(null);
+  const [brief,setBrief]=useState(null);   // null | {busy:true} | {text}
   const timer=useRef(null);
   const notesRef=useRef(null);
   const isQueue=queueIds.length>0;
@@ -797,7 +946,15 @@ function LiveCall({queueIds,onEnd}){
   });
   const advance=(disp)=>{
     const entry={name,company,disp,sec:connected?sec:0,notes,ts:Date.now()};
+    if(disp==="VM"||disp==="CONVO"){
+      entry.fu={tpl:disp==="VM"?"em-postvm":"em-recap",vars:{
+        first_name:(name||"").split(" ")[0]||name||"",company:company||"",persona:P.title,
+        pain:(P.pains||[""])[0]||"",case_study:"Forrester validated 448% ROI and payback in under 6 months on Tulip.",
+        case_study_short:"Forrester: 448% ROI.",my_name:AppState.settings.name,
+        my_number:AppState.settings.number||"[number]",day_time:"[day/time]"}};
+    }
     setLog(l=>[...l,entry]);
+    logCall({ts:Date.now(),date:todayKey(),name,company,targetId:target?target.id:null,disp,sec:connected?sec:0});
     bumpStat("dials");
     if(disp==="VM"){bumpStat("vms")}
     if(disp==="GATE"){bumpStat("gate")}
@@ -808,6 +965,7 @@ function LiveCall({queueIds,onEnd}){
     if(disp==="CB")bumpStat("cb");
     if(target){
       target.touches=(target.touches||0)+1;target.lastTouch=todayKey();
+      if(disp==="CB")target.cbDate=addDays(todayKey(),1);else delete target.cbDate;
       if(disp==="MEETING")target.status="MEETING";
       else if(disp==="NI")target.status="NURTURE";
       else if(target.status==="QUEUE")target.status="WORKING";
@@ -817,8 +975,19 @@ function LiveCall({queueIds,onEnd}){
     if(disp==="MEETING"){setBooked({name,company,persona:P});return}
     nextCall();
   };
+  const getBrief=async()=>{
+    setBrief({busy:true});
+    try{
+      const prompt="You are an elite SDR coach at Tulip.co (frontline ops platform for manufacturers; proof: Forrester 448% ROI <6mo payback, TICO 2x production, 90-day deploy). 80 words max, plain text, no markdown. Pre-call brief for a cold call to "+(name||"the prospect")+(target&&target.title?", "+target.title:"")+(company?" at "+company:"")+". Persona: "+P.title+"."+(hub?" Industry: "+hub+".":"")+(target&&target.notes?" Rep notes: "+target.notes.slice(0,400)+".":"")+" Give exactly four numbered lines: 1 opener angle. 2 likeliest pain. 3 best proof point. 4 likeliest objection + comeback.";
+      const out=await askClaude(prompt,450);
+      setBrief({text:out.trim()});
+    }catch(e){
+      setBrief(null);
+      toast(e.message==="NO_KEY"?"ADD YOUR ANTHROPIC KEY IN FORGE":"AI ERROR — "+e.message.slice(0,40));
+    }
+  };
   const nextCall=()=>{
-    setConnected(false);setSec(0);setNotes("");setTab("opener");setBooked(null);
+    setConnected(false);setSec(0);setNotes("");setTab("opener");setBooked(null);setBrief(null);
     if(isQueue){
       if(idx+1<queueIds.length)setIdx(idx+1);
       else onEnd(log);
@@ -834,15 +1003,25 @@ function LiveCall({queueIds,onEnd}){
         isQueue?h(F,null,
           h("div",{className:"row"},
             h("div",{className:"disp grow",style:{fontSize:22}},name||"—"),
+            h("button",{className:"btn sm",disabled:!!(brief&&brief.busy),onClick:getBrief,title:"AI pre-call brief"},brief&&brief.busy?"…":"✦ BRIEF"),
             h("span",{className:"mono dim",style:{fontSize:10}},(idx+1)+" / "+queueIds.length)),
           h("div",{className:"mono",style:{fontSize:11,color:"var(--ink2)"}},(target&&target.title?target.title+" · ":"")+company),
-          target&&target.phone&&h(CopyBit,{text:target.phone,style:{marginTop:6,display:"inline-block",padding:"4px 10px"}},h("span",{className:"mono",style:{fontSize:13,fontWeight:700,color:"var(--sig)"}},"☎ "+target.phone)),
+          target&&target.phone&&h("div",{className:"row",style:{marginTop:6,gap:6}},
+            h(CopyBit,{text:target.phone,style:{display:"inline-block",padding:"4px 10px"}},h("span",{className:"mono",style:{fontSize:13,fontWeight:700,color:"var(--sig)"}},"☎ "+target.phone)),
+            h("a",{className:"btn sm steel",style:{textDecoration:"none"},href:telHref(target.phone)},"CALL")),
           target&&target.notes&&h("div",{className:"mono dim",style:{fontSize:9.5,marginTop:6,maxHeight:52,overflowY:"auto",whiteSpace:"pre-wrap"}},target.notes))
         :h("div",{className:"row",style:{flexWrap:"wrap",gap:8}},
           h("input",{placeholder:"First name",value:free.name,onChange:e=>setFree({...free,name:e.target.value}),style:{width:130}}),
           h("input",{placeholder:"Company",value:free.company,onChange:e=>setFree({...free,company:e.target.value}),style:{flex:1,minWidth:120}}),
           h("select",{value:free.personaIdx,onChange:e=>setFree({...free,personaIdx:+e.target.value}),style:{maxWidth:190}},
-            D.PERSONAS.map((p,i)=>h("option",{key:i,value:i},p.title))))),
+            D.PERSONAS.map((p,i)=>h("option",{key:i,value:i},p.title))),
+          h("button",{className:"btn sm",disabled:!!(brief&&brief.busy),onClick:getBrief,title:"AI pre-call brief"},brief&&brief.busy?"…":"✦"))),
+      brief&&brief.text&&h("div",{className:"blk-flat anim-pop",style:{margin:"12px 16px 0",padding:"10px 12px",borderColor:"var(--violet)"}},
+        h("div",{className:"row",style:{marginBottom:4}},
+          h("span",{className:"eyebrow",style:{color:"var(--violet)"}},"✦ PRE-CALL BRIEF"),
+          h("div",{className:"grow"}),
+          h("button",{className:"btn sm ghost",onClick:()=>setBrief(null)},"✕")),
+        h("div",{style:{fontSize:11.5,lineHeight:1.65,whiteSpace:"pre-wrap"}},brief.text)),
       h("div",{className:"row",style:{margin:"12px 16px 0",gap:8}},
         h("div",{className:"tabbar",style:{width:"auto"}},
           [["opener","OPENER"],["disc","QUESTIONS"],["pitch","PITCH"],["vm","VOICEMAIL"]].map(([k,l])=>h("button",{key:k,className:tab===k?"on":"",onClick:()=>setTab(k)},l))),
@@ -920,7 +1099,23 @@ function BookedPanel({booked,notes,onNext,onEnd}){
 }
 function SessionSummary({log,onDone}){
   useHotkeys(e=>{if(e.key==="Enter"||e.key.toLowerCase()==="b"){onDone();return true}return false});
+  const [ai,setAI]=useState(null); // null | {busy:true} | {text}
   const dials=log.length;
+  const followups=log.filter(l=>l.fu);
+  const fuTpl=(id)=>getTemplates().find(t=>t.id===id)||DEFAULT_TEMPLATES.find(t=>t.id===id);
+  const debrief=async()=>{
+    setAI({busy:true});
+    try{
+      const notes=log.filter(l=>l.notes).map(l=>(l.name||"?")+": "+l.notes).join(" | ").slice(0,1200);
+      const disps=log.map(l=>l.disp).join(",");
+      const prompt="You are a blunt, encouraging SDR coach. Session data — dials:"+log.length+" dispositions:["+disps+"] talk-times(sec):["+log.filter(l=>l.sec>0).map(l=>l.sec).join(",")+"]"+(notes?" call notes: "+notes:"")+". Benchmarks: 8-12% connect, book 1 in 3 real convos, good calls run 5-6 min. In 120 words max, plain text: three sharp numbered observations about THIS session, then one line starting 'DRILL TOMORROW:' with a specific objection or skill to rep. No fluff.";
+      const out=await askClaude(prompt,500);
+      setAI({text:out.trim()});
+    }catch(e){
+      setAI(null);
+      toast(e.message==="NO_KEY"?"ADD YOUR ANTHROPIC KEY IN FORGE":"AI ERROR — "+e.message.slice(0,40));
+    }
+  };
   const connects=log.filter(l=>["CONVO","MEETING","NI","CB"].includes(l.disp)).length;
   const meetings=log.filter(l=>l.disp==="MEETING").length;
   const convos=log.filter(l=>["CONVO","MEETING"].includes(l.disp)).length;
@@ -939,6 +1134,20 @@ function SessionSummary({log,onDone}){
         l.sec>0&&h("span",{className:"mono dim",style:{fontSize:10}},fmtClock(l.sec)),
         h("span",{className:"stamp",style:{fontSize:8,color:l.disp==="MEETING"?"var(--go)":l.disp==="NI"?"var(--alarm)":"var(--steel)"}},l.disp)))
       :h("div",{className:"mono dim"},"No calls logged this session.")),
+    followups.length>0&&h(Blk,{title:"FOLLOW-UPS OWED — SEND THESE BEFORE YOU STAND UP ("+followups.length+")",color:"var(--sig)",style:{marginBottom:16}},
+      followups.map((l,i)=>{
+        const tpl=fuTpl(l.fu.tpl);
+        if(!tpl)return null;
+        const subj=fillVars(tpl.subj||"",l.fu.vars),body=fillVars(tpl.body,l.fu.vars);
+        return h("div",{key:i,className:"blk-flat",style:{padding:"10px 12px",marginBottom:8}},
+          h("div",{className:"row",style:{marginBottom:6}},
+            h("b",{style:{fontSize:12}},(l.name||"—")+(l.company?" · "+l.company:"")),
+            h("span",{className:"stamp",style:{fontSize:8,color:l.disp==="VM"?"var(--amber)":"var(--violet)"}},l.disp==="VM"?"AFTER VOICEMAIL":"POST-CONVO RECAP"),
+            h("div",{className:"grow"}),
+            h("button",{className:"btn sm primary",onClick:()=>copyText((subj?"Subject: "+subj+"\n\n":"")+body,"FOLLOW-UP COPIED — "+(l.name||"").toUpperCase())},"⧉ COPY"),
+            h("a",{className:"btn sm steel",style:{textDecoration:"none"},href:"mailto:?subject="+encodeURIComponent(subj)+"&body="+encodeURIComponent(body)},"MAIL")),
+          h("div",{className:"mono dim",style:{fontSize:9.5,lineHeight:1.5,maxHeight:44,overflow:"hidden"}},(subj?subj+" — ":"")+body.slice(0,160)+"…"));
+      })),
     h(Blk,{title:"READ ON THE DATA",color:"var(--steel)",style:{marginBottom:16}},
       h("div",{className:"mono",style:{fontSize:11,lineHeight:2}},
         cr<8&&dials>=10?h("div",null,"▸ Connect rate under 8% across "+dials+" dials is usually a DATA problem (bad numbers, spam-flagged caller ID, wrong time window) — not a script problem."):null,
@@ -946,14 +1155,21 @@ function SessionSummary({log,onDone}){
         connects>0&&meetings===0?h("div",null,"▸ Connects without bookings → audit the first 60 seconds and the close. Benchmark: strong reps book 1 in 3 real conversations."):null,
         meetings>0?h("div",null,"▸ "+meetings+" booked. Law of Replacement: add "+(meetings*2)+" fresh targets to the queue today."):null,
         h("div",null,"▸ Every no-answer still counts: 80% of meetings come after touch 5. The cadence keeps working while you sleep."))),
+    log.length>0&&h(Blk,{title:"✦ AI DEBRIEF — WHAT A COACH WOULD SAY",color:"var(--violet)",style:{marginBottom:16}},
+      ai&&ai.text
+        ?h("div",{style:{fontSize:12.5,lineHeight:1.7,whiteSpace:"pre-wrap"}},ai.text)
+        :h("div",{className:"row"},
+          h("span",{className:"mono dim",style:{fontSize:10.5}},"One paragraph of session-specific coaching + tomorrow's drill."),
+          h("div",{className:"grow"}),
+          h("button",{className:"btn sm",disabled:!!(ai&&ai.busy),onClick:debrief},ai&&ai.busy?"THINKING…":"✦ RUN DEBRIEF"))),
     h("button",{className:"btn big primary",onClick:onDone},"BACK TO LINE BOARD",h(Kbd,{k:"ENTER",btn:true})));
 }
-function TDial({go}){
+function TDial({go,initial}){
   const [phase,setPhase]=useState("setup"); // setup | live | summary
   const [queueIds,setQueueIds]=useState([]);
   const [log,setLog]=useState([]);
   useEffect(()=>{document.documentElement.dataset.mode = phase==="live" ? "dial" : "";return()=>{document.documentElement.dataset.mode=""}},[phase]);
-  if(phase==="setup")return h(DialSetup,{onStart:ids=>{setQueueIds(ids);setPhase("live")}});
+  if(phase==="setup")return h(DialSetup,{initialPicked:initial&&initial.queue,onStart:ids=>{setQueueIds(ids);setPhase("live")}});
   if(phase==="live")return h(LiveCall,{queueIds,onEnd:l=>{setLog(l);setPhase("summary")}});
   return h(SessionSummary,{log,onDone:()=>{setPhase("setup");go("board")}});
 }
@@ -981,9 +1197,43 @@ function TargetForm({initial,onSave,onCancel}){
       h("button",{className:"btn ghost",onClick:onCancel},"CANCEL"),
       h("button",{className:"btn primary",onClick:()=>{if(!f.name&&!f.company)return toast("NAME OR COMPANY REQUIRED");onSave(f)}},"SAVE TARGET")));
 }
+function ImportModal({onClose,onDone}){
+  const [text,setText]=useState("");
+  const [personaIdx,setPersonaIdx]=useState(0);
+  const [hub,setHub]=useState("");
+  const parsed=useMemo(()=>mapCsvTargets(text),[text]);
+  const existing=new Set(AppState.targets.map(t=>((t.name||"")+"|"+(t.company||"")).toLowerCase()));
+  const fresh=parsed.items.filter(x=>!existing.has((x.name+"|"+x.company).toLowerCase()));
+  const dupes=parsed.items.length-fresh.length;
+  const runImport=()=>{
+    fresh.reverse().forEach(x=>AppState.targets.unshift({...x,id:uid(),personaIdx,hub,status:"QUEUE",touches:0,createdAt:todayKey()}));
+    saveState("targets");
+    toast(fresh.length+" TARGETS IMPORTED"+(dupes?" · "+dupes+" DUPES SKIPPED":""));
+    onDone();
+  };
+  return h(Modal,{onClose,width:620},
+    h("div",{className:"disp",style:{fontSize:20,marginBottom:4}},"IMPORT TARGETS — CSV / SPREADSHEET PASTE"),
+    h("div",{className:"mono dim",style:{fontSize:9.5,lineHeight:1.6,marginBottom:12}},"Paste rows from Excel/Sheets/CRM export, or pick a .csv file. Headers are auto-detected (name · company · title · phone · notes) — no headers works too, in that column order. Dupes (same name + company) are skipped."),
+    h("div",{className:"row",style:{marginBottom:8}},
+      h("input",{type:"file",accept:".csv,.tsv,.txt",style:{border:"none",padding:0},onChange:e=>{
+        const f=e.target.files&&e.target.files[0];if(!f)return;
+        const r=new FileReader();r.onload=()=>setText(String(r.result||""));r.readAsText(f);
+      }})),
+    h("textarea",{rows:7,style:{width:"100%",marginBottom:10},placeholder:"name,company,title,phone,notes\nJane Smith,Acme Aerospace,VP Ops,617-555-0100,SAP shop — AS9100 audit Q3",value:text,onChange:e=>setText(e.target.value)}),
+    h("div",{className:"grid g2",style:{gap:10}},
+      h(Field,{label:"PERSONA FOR ALL IMPORTED"},h("select",{style:{width:"100%"},value:personaIdx,onChange:e=>setPersonaIdx(+e.target.value)},D.PERSONAS.map((p,i)=>h("option",{key:i,value:i},p.title)))),
+      h(Field,{label:"INDUSTRY HUB (OPTIONAL)"},h("select",{style:{width:"100%"},value:hub,onChange:e=>setHub(e.target.value)},h("option",{value:""},"— none —"),D.HUBS.map(x=>h("option",{key:x.id,value:x.id},x.label))))),
+    h("div",{className:"row",style:{justifyContent:"space-between"}},
+      h("span",{className:"mono",style:{fontSize:10.5,color:parsed.items.length?"var(--go)":"var(--dim)"}},
+        parsed.items.length?fresh.length+" new · "+dupes+" duplicate"+(dupes===1?"":"s")+(parsed.hasHeader?" · headers detected":" · no headers (positional)"):"nothing parsed yet"),
+      h("div",{className:"row"},
+        h("button",{className:"btn ghost",onClick:onClose},"CANCEL"),
+        h("button",{className:"btn primary",disabled:!fresh.length,onClick:runImport},"⬇ IMPORT "+(fresh.length||"")))));
+}
 function TTargets({go,initial}){
   const [,force]=useState(0);const rerender=()=>force(x=>x+1);
   const [modal,setModal]=useState(initial&&initial.modal==="new"?"new":null); // null | "new" | target
+  const [imp,setImp]=useState(!!(initial&&initial.import));
   const [filter,setFilter]=useState("ALL");
   const [q,setQ]=useState(initial&&initial.q?initial.q:"");
   const cadence=getCadences()[0];
@@ -1002,10 +1252,12 @@ function TTargets({go,initial}){
   };
   return h("div",{className:"stage anim-up"},
     modal&&h(TargetForm,{initial:modal==="new"?null:modal,onSave:save,onCancel:()=>setModal(null)}),
+    imp&&h(ImportModal,{onClose:()=>setImp(false),onDone:()=>{setImp(false);rerender()}}),
     h("div",{className:"pagehead"},
       h("h1",null,"Targets"),
       h("span",{className:"mono dim",style:{fontSize:11}},AppState.targets.length+" total"),
       h("div",{className:"grow"}),
+      h("button",{className:"btn",onClick:()=>setImp(true)},"⬇ IMPORT CSV"),
       h("button",{className:"btn primary",onClick:()=>setModal("new")},"+ ADD TARGET"),
       h("button",{className:"btn go",onClick:()=>go("dial")},"▶ DIAL QUEUE")),
     h("div",{className:"row",style:{marginBottom:14,flexWrap:"wrap"}},
@@ -1018,7 +1270,8 @@ function TTargets({go,initial}){
             h("b",{style:{fontSize:14}},t.name||"(no name)"),
             h("span",{className:"stamp",style:{fontSize:8,color:T_COLORS[t.status]}},t.status)),
           h("div",{className:"mono",style:{fontSize:10.5,color:"var(--ink2)"}},(t.title?t.title+" · ":"")+(t.company||"")),
-          h("div",{className:"mono dim",style:{fontSize:9.5,marginTop:2}},(D.PERSONAS[t.personaIdx]?"persona: "+D.PERSONAS[t.personaIdx].title:"")+(t.hub?" · "+t.hub:"")+(t.phone?" · "+t.phone:""))),
+          h("div",{className:"mono dim",style:{fontSize:9.5,marginTop:2}},(D.PERSONAS[t.personaIdx]?"persona: "+D.PERSONAS[t.personaIdx].title:"")+(t.hub?" · "+t.hub:""),
+            t.phone&&h("a",{href:telHref(t.phone),style:{color:"var(--steel)",fontWeight:700,textDecoration:"none",marginLeft:6}},"☎ "+t.phone))),
         h("div",{style:{flex:2,minWidth:180}},
           h("div",{className:"eyebrow"},"TOUCH "+(t.touches||0)+" · NEXT UP"),
           h("div",{className:"mono",style:{fontSize:10.5,lineHeight:1.5}},nextStep(t)),
@@ -1303,6 +1556,7 @@ function TMessages({initial}){
   const [csPick,setCsPick]=useState("");
   const [ai,setAI]=useState({busy:false});
   const tpl=tpls.find(t=>t.id===selId)||tpls[0];
+  useEffect(()=>{if(initial&&initial.target)applyTarget(initial.target)},[]);
   const ensureCustom=()=>{if(!AppState.templates){AppState.templates=JSON.parse(JSON.stringify(DEFAULT_TEMPLATES));saveState("templates")}return AppState.templates};
   const startEdit=(t)=>{setDraft(JSON.parse(JSON.stringify(t)));setEditing(true)};
   const saveEdit=()=>{const list=ensureCustom();const i=list.findIndex(x=>x.id===draft.id);if(i>=0)list[i]=draft;else list.push(draft);saveState("templates");setEditing(false);setSelId(draft.id);rerender();toast("TEMPLATE SAVED")};
@@ -1512,6 +1766,29 @@ function TStats(){
         h("div",{className:"mono",style:{fontSize:11,lineHeight:1.9,marginTop:2}},
           h("div",null,wd+" dials · "+wc+" connects"),
           h("div",null,wv+" convos · ",h("b",{style:{color:"var(--go)"}},wm+" meetings"))))),
+    (()=>{
+      const logAll=AppState.callLog||[];
+      if(logAll.length<20)return h("div",{className:"blk-flat",style:{padding:"10px 12px",marginBottom:20}},
+        h("div",{className:"eyebrow"},"CONNECT WINDOWS — YOUR ACTUAL DATA"),
+        h("div",{className:"mono dim",style:{fontSize:10,marginTop:4}},"Log "+(20-logAll.length)+" more dials and this unlocks: your personal connect-rate by hour of day, from real history — not the generic benchmark."));
+      const byHour={};
+      logAll.forEach(r=>{const hr=new Date(r.ts).getHours();(byHour[hr]=byHour[hr]||{d:0,c:0}).d++;if(["CONVO","MEETING","NI","CB"].includes(r.disp))byHour[hr].c++});
+      const hours=Object.keys(byHour).map(Number).sort((a,b)=>a-b);
+      const maxD=Math.max(1,...hours.map(hr=>byHour[hr].d));
+      let best=null;hours.forEach(hr=>{const b=byHour[hr];if(b.d>=5&&(!best||b.c/b.d>byHour[best].c/byHour[best].d))best=hr});
+      return h(F,null,
+        h("div",{className:"eyebrow",style:{marginBottom:8}},"CONNECT WINDOWS — YOUR ACTUAL "+logAll.length+" DIALS"+(best!=null?" · BEST: "+best+":00–"+(best+1)+":00":"")),
+        h("div",{className:"blk",style:{padding:"16px",marginBottom:20}},
+          h("div",{style:{display:"flex",alignItems:"flex-end",gap:6,height:100}},
+            hours.map(hr=>{
+              const b=byHour[hr],rate=pct(b.c,b.d);
+              return h("div",{key:hr,style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3,height:"100%",justifyContent:"flex-end"},title:hr+":00 — "+b.d+" dials · "+b.c+" connects ("+rate+"%)"},
+                h("span",{className:"mono",style:{fontSize:8.5,fontWeight:700,color:hr===best?"var(--go)":"var(--dim)"}},rate+"%"),
+                h("div",{style:{width:"100%",maxWidth:34,background:hr===best?"var(--go)":"var(--steel)",border:"1.5px solid var(--line)",height:Math.max(3,(b.d/maxD)*66)+"px"}}),
+                h("span",{className:"mono dim",style:{fontSize:8}},hr+"h"));
+            })),
+          h("div",{className:"mono dim",style:{fontSize:9,marginTop:8}},"Bar height = dial volume · label = connect rate · green = your best window (5+ dials). Schedule power hours there.")));
+    })(),
     h("div",{className:"eyebrow",style:{marginBottom:8}},"14-DAY LINE OUTPUT"),
     h("div",{className:"blk",style:{padding:"16px",marginBottom:20}},
       h("div",{style:{display:"flex",alignItems:"flex-end",gap:6,height:120}},
@@ -1634,11 +1911,18 @@ function Andon(){
   },[]);
   const t=todayStats();
   const cw=callWindow();
+  const goal=goalPerDay(),streak=dialStreak();
   const cells=[["DIALS",t.dials],["CONNECT",t.connects],["CONVO",t.convos],["VM",t.vms||0],["BOOKED",t.meetings]];
   return h("div",{className:"andon"},
     cells.map(([l,v],i)=>h("div",{key:l,className:"andon-cell"},
       h("span",{className:"al"},l),
       h("span",{className:"av",style:l==="BOOKED"&&v>0?{color:"#3ddc84"}:null},v))),
+    h("div",{className:"andon-cell",title:"Daily dial goal from your funnel math"},
+      h("span",{className:"al"},"GOAL"),
+      h("span",{className:"av",style:{fontSize:16,color:t.dials>=goal?"#3ddc84":"#F2F4F0"}},t.dials+"/"+goal)),
+    streak>=2&&h("div",{className:"andon-cell",title:"Consecutive weekdays hitting the dial goal"},
+      h("span",{className:"al"},"STREAK"),
+      h("span",{className:"av",style:{color:"#f5a300"}},"🔥"+streak)),
     h("div",{className:"andon-cell",style:{minWidth:150}},
       h("span",{className:"al"},"CALL WINDOW"),
       h("span",{style:{fontFamily:"var(--mono)",fontSize:11,fontWeight:700,color:cw.c===("var(--go)")?"#3ddc84":cw.c==="var(--amber)"?"#f5a300":"#8A9099"}},"● "+cw.label)),
@@ -1685,7 +1969,7 @@ function App(){
         h("span",{className:"rk"},i+1))),
       h("div",{className:"rail-foot"},
         h("button",{className:"btn sm ghost",style:{width:"100%",marginBottom:7},onClick:()=>setKeys(true),title:"Hotkey cheat sheet (?)"},"? KEYS"),
-        h("div",{className:"mono",style:{fontSize:7.5,color:"var(--dim)",lineHeight:1.6,letterSpacing:".05em"}},"VANTAGE 5.1",h("br"),__fbOK&&__uid?"SYNCED":"LOCAL"))),
+        h("div",{className:"mono",style:{fontSize:7.5,color:"var(--dim)",lineHeight:1.6,letterSpacing:".05em"}},"VANTAGE 5.2",h("br"),__fbOK&&__uid?"SYNCED":"LOCAL"))),
     h("div",{className:"main"},
       h(Andon),
       h(Page,{key:mod+":"+nav,go,initial:sub,initialSection:sub})),

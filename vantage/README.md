@@ -1,8 +1,19 @@
-# VANTAGE 5.1 — Cold Call Command
+# VANTAGE 5.2 — Cold Call Command
 
 Single-file app (`index.html`) — no build step. Deploy anywhere that serves static files.
 
-## New in 5.1 — full hotkey system
+## New in 5.2 — the cadence runs your day
+
+- **THE LINE — DUE TODAY** (top of the Board): the cadence is now an engine. Every target's next touch is computed from its touch count and last-touch date — calls due (with overdue flags), callbacks they asked for, and email/LinkedIn/VM touches due. One click dials the due list; each non-call touch has **OPEN** (template pre-filled with that target) and **✓** (log it done).
+- **Callback scheduling**: logging CALLBACK LATER books the target onto tomorrow's due list automatically.
+- **Follow-ups owed**: the session debrief now lists a ready-to-send email for every VM and real conversation you logged — pre-filled, copy or open in mail. Send them before you stand up.
+- **Call history + your real connect windows**: every dial is stored (last 1,500). After 20 dials, Stats shows your personal connect-rate by hour of day and flags your best window.
+- **CSV import**: Targets → IMPORT CSV. Paste from Excel/Sheets/CRM export or pick a file; headers auto-detected, duplicates skipped, persona/hub applied in bulk.
+- **Click-to-dial**: phone numbers are `tel:` links (softphone/mobile).
+- **GOAL + STREAK on the andon**: dials today vs. your funnel-math daily target, and consecutive weekdays on goal.
+- **AI assists** (uses your Anthropic key from FORGE): **✦ BRIEF** on any live call (opener angle, likely pain, proof point, likely objection), **✦ RUN DEBRIEF** after a session (three observations + tomorrow's drill).
+
+## Hotkeys (added in 5.1)
 
 Press **`?`** anywhere in the app for the cheat sheet. Keys pause automatically while you type; `ESC` hops out of any text field.
 
