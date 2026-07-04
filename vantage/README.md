@@ -1,6 +1,14 @@
-# VANTAGE 5.3 — Cold Call Command
+# VANTAGE 5.4 — Cold Call Command
 
 Single-file app (`index.html`) — no build step. Deploy anywhere that serves static files.
+
+## New in 5.4 — every claim in the app was fact-checked (see RESEARCH.md)
+
+A 105-agent deep-research pass verified Tulip facts against primary sources (July 2026) and the app now only asserts what survived:
+
+- **New verified ammo**, front-loaded in the live-call pitch tab: Tulip company facts ($120M Series D, Jan 2026, led by Mitsubishi Electric at a $1.3B valuation · 43K apps / 60K workers / 1,000 sites / 45 countries · gen-AI +364%, automations +519% · IDC MarketScape 2024–25 MES **Leader**), VEKA −88% quality escapes, Innovafeed +500% production, Reframe 2.5×, Zaleco −20% scrap, Formlabs −20% lead time, Test Devices +50%, and Deloitte's 2026 Outlook budget stat (80% of manufacturers putting 20%+ of improvement budgets into smart manufacturing).
+- **Stale claims corrected everywhere** (openers, pitches, VMs, AI prompts): "TICO 2x production" → the verified 50–60% inspection/rework cut + the ops director's "full-blown MES" quote; "AstraZeneca across 24 sites" → verified-safe pharma proof (Sharp 30% faster GxP packaging); J&J/Sartorius/Richemont name-drops removed; Forrester figures now attributed as "a 2023 Forrester study commissioned by Tulip."
+- **⚠ VERIFY FIRST flags** on cards that couldn't be reconfirmed (AstraZeneca, Pratt Miller) — reconfirm before citing on a call. Competitor battle cards and cold-call benchmarks found no verifiable sources; treat as craft wisdom, not cited fact. Full citations: `RESEARCH.md`.
 
 ## New in 5.3
 
