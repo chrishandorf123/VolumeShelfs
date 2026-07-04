@@ -1,6 +1,13 @@
-# VANTAGE 5.4 — Cold Call Command
+# VANTAGE 5.5 — Cold Call Command
 
 Single-file app (`index.html`) — no build step. Deploy anywhere that serves static files.
+
+## New in 5.5 — Power Hour and the honest funnel
+
+- **⚡ POWER HOUR sprint mode**: arm it on the dial setup screen (`P`), set minutes + a dial goal, and the live-call screen gets a countdown HUD with live pace (AHEAD / ON PACE / BEHIND — DIAL) and a goal bar. The debrief scores the sprint (WON / SHORT).
+- **Meetings that actually happen**: MEETING targets get ✓ HELD / ✗ NO-SHOW buttons. Held → hand-off stamp; no-show → automatically requeued with a callback on tomorrow's due list. Stats now show your weekly **show rate** — the number most SDR dashboards hide.
+- **Snooze (→2D)** on any due call or touch — busy days happen; the cadence bends instead of going stale. Snooze clears itself on any real touch.
+- **Backup nag**: if your data hasn't been exported in 7+ days, the Board says so — one click downloads the full backup.
 
 ## New in 5.4 — every claim in the app was fact-checked (see RESEARCH.md)
 

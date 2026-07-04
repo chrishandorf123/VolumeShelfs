@@ -279,7 +279,7 @@ async function askClaude(prompt,maxTokens){
 
 /* ================= APP STATE ================= */
 const todayKey = ()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")};
-const blankDay = ()=>({date:todayKey(),dials:0,connects:0,vms:0,gate:0,convos:0,meetings:0,ni:0,cb:0});
+const blankDay = ()=>({date:todayKey(),dials:0,connects:0,vms:0,gate:0,convos:0,meetings:0,ni:0,cb:0,held:0,noshow:0});
 
 const AppState = {
   settings:{name:"Chris",number:"",meetingsPerWeek:5,accent:"sig"},
@@ -332,6 +332,7 @@ function logCall(rec){
 function targetNextDue(t){
   if(!(t.status==="QUEUE"||t.status==="WORKING"))return null;
   const today=todayKey();
+  if(t.snooze&&t.snooze>today)return{ch:"call",label:"snoozed until "+t.snooze,due:t.snooze,overdue:false,snoozed:true};
   if(t.cbDate)return{ch:"call",label:"Callback they asked for ("+t.cbDate+")",due:t.cbDate,overdue:t.cbDate<today,cb:true};
   const steps=getCadences()[0].steps,touch=t.touches||0;
   if(!steps.length||touch>=steps.length)return{done:true,label:"cadence complete — breakup sent or move to NURTURE",due:null};
@@ -353,8 +354,14 @@ function cadenceDue(){
 }
 function markTouchDone(t){
   t.touches=(t.touches||0)+1;t.lastTouch=todayKey();
+  delete t.snooze;
   if(t.status==="QUEUE")t.status="WORKING";
   saveState("targets");
+}
+function snoozeTarget(t,days){
+  t.snooze=addDays(todayKey(),days||2);
+  saveState("targets");
+  toast("SNOOZED TO "+t.snooze);
 }
 /* ---- tiny CSV parser (quotes, CRLF, auto delimiter) ---- */
 function csvParse(text){
@@ -453,7 +460,13 @@ function exportBackup(){
   const payload={};KEYS.forEach(k=>payload[k]=AppState[k]);
   const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="vantage-backup-"+todayKey()+".json";a.click();
+  AppState.settings.lastBackup=Date.now();saveState("settings");
   toast("BACKUP DOWNLOADED");
+}
+function backupOverdue(){
+  if(!AppState.targets.length&&!AppState.stats.length)return false;
+  const last=AppState.settings.lastBackup||0;
+  return (Date.now()-last)>7*86400000;
 }
 
 /* ================= HOTKEYS — scope stack ================= */
@@ -587,6 +600,7 @@ const KEYMAP=[
  {sec:"DIAL — SETUP · BOOKED · DEBRIEF",keys:[
    ["S / ENTER","Start the session with checked targets"],
    ["F","Freestyle session (no queue)"],
+   ["P","Arm / disarm the Power Hour sprint"],
    ["N","After booking: next dial"],
    ["E","After booking: end session"],
    ["ENTER / B","Debrief: back to the Line Board"]]},
@@ -765,7 +779,8 @@ function TodayQueue({go,onChange}){
           h("b",{style:{fontSize:12,flexShrink:0}},x.t.name||x.t.company),
           h("span",{className:"mono dim grow",style:{fontSize:9.5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},x.label),
           x.overdue&&h("span",{className:"stamp",style:{fontSize:7.5,color:"var(--alarm)"}},"LATE"),
-          x.cb&&h("span",{className:"stamp",style:{fontSize:7.5,color:"var(--steel)"}},"CALLBACK")))
+          x.cb&&h("span",{className:"stamp",style:{fontSize:7.5,color:"var(--steel)"}},"CALLBACK"),
+          h("button",{className:"btn sm ghost",title:"Snooze 2 days",onClick:()=>{snoozeTarget(x.t,2);onChange()}},"→2D")))
         :h("div",{className:"mono dim",style:{fontSize:10.5}},"No calls due."),
         due.calls.length>8&&h("div",{className:"mono dim",style:{fontSize:9.5,marginTop:4}},"+"+(due.calls.length-8)+" more in the dial queue")),
       h("div",null,
@@ -776,7 +791,8 @@ function TodayQueue({go,onChange}){
           h("span",{className:"mono dim grow",style:{fontSize:9.5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},x.label),
           x.overdue&&h("span",{className:"stamp",style:{fontSize:7.5,color:"var(--alarm)"}},"LATE"),
           h("button",{className:"btn sm",title:"Open the linked template with this target filled in",onClick:()=>go("messages",{sel:x.step.tpl||undefined,target:x.t.id})},"OPEN"),
-          h("button",{className:"btn sm go",title:"Mark touch done",onClick:()=>{markTouchDone(x.t);onChange()}},"✓")))
+          h("button",{className:"btn sm go",title:"Mark touch done",onClick:()=>{markTouchDone(x.t);onChange()}},"✓"),
+          h("button",{className:"btn sm ghost",title:"Snooze 2 days",onClick:()=>{snoozeTarget(x.t,2);onChange()}},"→2D")))
         :h("div",{className:"mono dim",style:{fontSize:10.5}},"No email / LinkedIn / VM touches due."),
         due.touches.length>8&&h("div",{className:"mono dim",style:{fontSize:9.5,marginTop:4}},"+"+(due.touches.length-8)+" more"))));
 }
@@ -791,7 +807,8 @@ function TBoard({go}){
     h("div",{className:"pagehead"},
       h("h1",null,"Line Board"),
       h("span",{className:"stamp",style:{color:cw.c,borderColor:cw.c}},"● "+cw.label),
-      h("span",{className:"mono dim",style:{fontSize:10}},cw.note)),
+      h("span",{className:"mono dim",style:{fontSize:10}},cw.note),
+      backupOverdue()&&h("button",{className:"btn sm",style:{color:"var(--amber)",borderColor:"var(--amber)"},title:"Your data hasn't been backed up in over a week",onClick:()=>exportBackup()},"⚠ BACKUP NOW — 7+ DAYS")),
     h(TodayQueue,{go,onChange:()=>force(x=>x+1)}),
     h("div",{className:"grid g4",style:{marginBottom:16}},
       h(StatPill,{label:"DIALS TODAY",value:t.dials,color:"var(--ink)",sub:"raw attempts"}),
@@ -868,12 +885,18 @@ function DialSetup({onStart,initialPicked}){
     }
     return queue.map(t=>t.id);
   });
+  const [sprintOn,setSprintOn]=useState(false);
+  const [sprintMin,setSprintMin]=useState(60);
+  const [sprintGoal,setSprintGoal]=useState(Math.max(10,Math.round(goalPerDay()/3)));
+  const cfg=()=>sprintOn?{min:Math.max(5,sprintMin),goal:Math.max(1,sprintGoal)}:null;
+  const start=(ids)=>onStart(ids,cfg());
   useHotkeys(e=>{
     const k=e.key.toLowerCase();
-    if(k==="f"){onStart([]);return true}
+    if(k==="f"){start([]);return true}
+    if(k==="p"){setSprintOn(v=>!v);return true}
     if(k==="s"||e.key==="Enter"){
-      if(picked.length)onStart(picked);
-      else if(!queue.length)onStart([]);
+      if(picked.length)start(picked);
+      else if(!queue.length)start([]);
       else toast("CHECK TARGETS FIRST — OR F FOR FREESTYLE");
       return true;
     }
@@ -891,9 +914,19 @@ function DialSetup({onStart,initialPicked}){
               h("div",{className:"mono dim",style:{fontSize:9.5}},(D.PERSONAS[t.personaIdx]?D.PERSONAS[t.personaIdx].title:"")+(t.touches?" · touch "+(t.touches+1):" · first touch"))),
             h("span",{className:"stamp",style:{fontSize:8,color:"var(--steel)"}},t.status)))),
         h("div",{className:"row",style:{marginTop:12}},
-          h("button",{className:"btn big primary",disabled:!picked.length,onClick:()=>onStart(picked)},"▶ START — "+picked.length+" TARGETS",h(Kbd,{k:"S",btn:true})),
-          h("button",{className:"btn",onClick:()=>onStart([])},"FREESTYLE (no queue)",h(Kbd,{k:"F",btn:true}))))
-      :h(Empty,{icon:"📋",title:"Queue is empty",note:"Freestyle mode lets you type each prospect as you dial —\nor add targets first so dispositions track per-prospect automatically.",action:h("button",{className:"btn big primary",onClick:()=>onStart([])},"▶ START FREESTYLE SESSION",h(Kbd,{k:"S",btn:true}))})),
+          h("button",{className:"btn big primary",disabled:!picked.length,onClick:()=>start(picked)},"▶ START — "+picked.length+" TARGETS",h(Kbd,{k:"S",btn:true})),
+          h("button",{className:"btn",onClick:()=>start([])},"FREESTYLE (no queue)",h(Kbd,{k:"F",btn:true}))))
+      :h(Empty,{icon:"📋",title:"Queue is empty",note:"Freestyle mode lets you type each prospect as you dial —\nor add targets first so dispositions track per-prospect automatically.",action:h("button",{className:"btn big primary",onClick:()=>start([])},"▶ START FREESTYLE SESSION",h(Kbd,{k:"S",btn:true}))})),
+    h(Blk,{title:"POWER HOUR — TIMED SPRINT",tag:sprintOn?"ON":"OFF",color:sprintOn?"var(--sig)":"var(--dim)",style:{marginBottom:16}},
+      h("div",{className:"row",style:{flexWrap:"wrap",gap:12}},
+        h("button",{className:"chip"+(sprintOn?" on":""),onClick:()=>setSprintOn(v=>!v)},sprintOn?"SPRINT ARMED":"ARM SPRINT",h("span",{className:"kbd",style:{marginLeft:5}},"P")),
+        sprintOn&&h(F,null,
+          h("span",{className:"eyebrow"},"MINUTES"),
+          h("input",{type:"number",min:5,max:240,style:{width:70},value:sprintMin,onChange:e=>setSprintMin(+e.target.value||60)}),
+          h("span",{className:"eyebrow"},"DIAL GOAL"),
+          h("input",{type:"number",min:1,max:200,style:{width:70},value:sprintGoal,onChange:e=>setSprintGoal(+e.target.value||10)}),
+          h("span",{className:"mono dim",style:{fontSize:9.5}},"countdown + live pace vs goal on the call screen")),
+        !sprintOn&&h("span",{className:"mono dim",style:{fontSize:10}},"A block with a clock beats an afternoon of drift — set a dial goal, race it."))),
     h(Blk,{title:"PRE-FLIGHT — 30 SECONDS",color:"var(--go)"},
       h("div",{style:{fontFamily:"var(--mono)",fontSize:11,lineHeight:2.1}},
         h("div",null,"① Stand up or sit tall — tone carries 93% of the outcome"),
@@ -901,8 +934,10 @@ function DialSetup({onStart,initialPicked}){
         h("div",null,"③ Never: \"did I catch you at a bad time?\" (−40%)"),
         h("div",null,"④ Goal per connect: a 5–6 min conversation, 11–14 questions, ONE next step with two time options"))));
 }
-function LiveCall({queueIds,onEnd}){
+function LiveCall({queueIds,sprint,onEnd}){
   const [idx,setIdx]=useState(0);
+  const [nowTs,setNowTs]=useState(Date.now());
+  useEffect(()=>{if(!sprint)return;const iv=setInterval(()=>setNowTs(Date.now()),1000);return()=>clearInterval(iv)},[sprint]);
   const [free,setFree]=useState({name:"",company:"",personaIdx:0});
   const [connected,setConnected]=useState(false);
   const [sec,setSec]=useState(0);
@@ -976,8 +1011,9 @@ function LiveCall({queueIds,onEnd}){
     if(disp==="CB")bumpStat("cb");
     if(target){
       target.touches=(target.touches||0)+1;target.lastTouch=todayKey();
+      delete target.snooze;
       if(disp==="CB")target.cbDate=addDays(todayKey(),1);else delete target.cbDate;
-      if(disp==="MEETING")target.status="MEETING";
+      if(disp==="MEETING"){target.status="MEETING";delete target.meetingOutcome;}
       else if(disp==="NI")target.status="NURTURE";
       else if(target.status==="QUEUE")target.status="WORKING";
       if(notes)target.notes=(target.notes?target.notes+"\n":"")+todayKey()+": "+notes;
@@ -1067,6 +1103,23 @@ function LiveCall({queueIds,onEnd}){
       ),
     /* right: timer + control */
     h("div",{style:{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}},
+      sprint&&(()=>{
+        const total=sprint.min*60;
+        const elapsed=Math.max(0,(nowTs-sprint.startTs)/1000);
+        const remain=Math.max(0,total-elapsed);
+        const timeFrac=Math.min(1,elapsed/total);
+        const goalFrac=Math.min(1,log.length/sprint.goal);
+        const pace=goalFrac>=timeFrac?(goalFrac-timeFrac>0.08?{t:"AHEAD",c:"var(--go)"}:{t:"ON PACE",c:"var(--go)"}):{t:"BEHIND — DIAL",c:"var(--amber)"};
+        return h("div",{style:{padding:"9px 20px",borderBottom:"2px solid var(--line)",background:remain<=0?"var(--alarmbg)":"var(--panel2)"}},
+          h("div",{className:"row",style:{gap:12}},
+            h("span",{className:"eyebrow",style:{color:"var(--sig)"}},"POWER HOUR"),
+            h("span",{className:"mono",style:{fontWeight:700,fontSize:15,fontVariantNumeric:"tabular-nums",color:remain<=60?"var(--alarm)":"var(--ink)"}},fmtClock(Math.ceil(remain))),
+            h("div",{className:"bar grow"},h("i",{style:{width:(goalFrac*100)+"%",background:"var(--go)"}})),
+            h("span",{className:"mono",style:{fontSize:11,fontWeight:700}},log.length+"/"+sprint.goal),
+            remain<=0
+              ?h("span",{className:"stamp",style:{color:"var(--alarm)"}},"TIME — LAND THIS ONE, THEN E")
+              :h("span",{className:"stamp",style:{color:pace.c,borderColor:pace.c}},pace.t)));
+      })(),
       h("div",{style:{padding:"18px 20px",borderBottom:"2px solid var(--line)",textAlign:"center",background:"var(--panel)"}},
         h("div",{className:"bigstat",style:{fontSize:64,color:connected?"var(--go)":"var(--dim)"}},fmtClock(sec)),
         talkHint?h("div",{className:"stamp",style:{color:talkHint.c,borderColor:talkHint.c,marginTop:6}},talkHint.t)
@@ -1114,7 +1167,7 @@ function BookedPanel({booked,notes,onNext,onEnd}){
       h("button",{className:"btn big primary grow",onClick:onNext},"▶ NEXT DIAL",h(Kbd,{k:"N",btn:true})),
       h("button",{className:"btn big",onClick:onEnd},"END SESSION",h(Kbd,{k:"E",btn:true}))));
 }
-function SessionSummary({log,onDone}){
+function SessionSummary({log,sprint,onDone}){
   useHotkeys(e=>{if(e.key==="Enter"||e.key.toLowerCase()==="b"){onDone();return true}return false});
   const [ai,setAI]=useState(null); // null | {busy:true} | {text}
   const dials=log.length;
@@ -1139,6 +1192,11 @@ function SessionSummary({log,onDone}){
   const cr=pct(connects,dials);
   return h("div",{className:"stage anim-up",style:{maxWidth:820,margin:"0 auto"}},
     h("div",{className:"pagehead"},h("h1",null,"Session Debrief")),
+    sprint&&h("div",{className:"blk",style:{padding:"14px 18px",marginBottom:16,background:dials>=sprint.goal?"var(--gobg)":"var(--amberbg)"}},
+      h("div",{className:"row",style:{gap:12,flexWrap:"wrap"}},
+        h("span",{className:"disp",style:{fontSize:20}},dials>=sprint.goal?"⚡ SPRINT WON":"⚡ SPRINT SHORT"),
+        h("span",{className:"mono",style:{fontSize:12,fontWeight:700}},dials+"/"+sprint.goal+" dials in "+sprint.min+" min"),
+        h("span",{className:"mono dim",style:{fontSize:10}},dials>=sprint.goal?"goal hit — log it and take the win":"short is data, not failure — book the next sprint while it stings"))),
     h("div",{className:"grid g4",style:{marginBottom:16}},
       h(StatPill,{label:"DIALS",value:dials}),
       h(StatPill,{label:"CONNECTS",value:connects,sub:cr+"% · bench 8–12%",color:cr>=8?"var(--go)":"var(--amber)"}),
@@ -1184,11 +1242,12 @@ function SessionSummary({log,onDone}){
 function TDial({go,initial}){
   const [phase,setPhase]=useState("setup"); // setup | live | summary
   const [queueIds,setQueueIds]=useState([]);
+  const [sprint,setSprint]=useState(null);
   const [log,setLog]=useState([]);
   useEffect(()=>{document.documentElement.dataset.mode = phase==="live" ? "dial" : "";return()=>{document.documentElement.dataset.mode=""}},[phase]);
-  if(phase==="setup")return h(DialSetup,{initialPicked:initial&&initial.queue,onStart:ids=>{setQueueIds(ids);setPhase("live")}});
-  if(phase==="live")return h(LiveCall,{queueIds,onEnd:l=>{setLog(l);setPhase("summary")}});
-  return h(SessionSummary,{log,onDone:()=>{setPhase("setup");go("board")}});
+  if(phase==="setup")return h(DialSetup,{initialPicked:initial&&initial.queue,onStart:(ids,sp)=>{setQueueIds(ids);setSprint(sp?{...sp,startTs:Date.now()}:null);setPhase("live")}});
+  if(phase==="live")return h(LiveCall,{queueIds,sprint,onEnd:l=>{setLog(l);setPhase("summary")}});
+  return h(SessionSummary,{log,sprint,onDone:()=>{setPhase("setup");go("board")}});
 }
 </script>
 
@@ -1308,6 +1367,10 @@ function TTargets({go,initial}){
           })(),
           t.notes&&h("div",{className:"mono dim",style:{fontSize:9.5,marginTop:3,maxHeight:40,overflow:"hidden"}},t.notes)),
         h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
+          t.status==="MEETING"&&!t.meetingOutcome&&h(F,null,
+            h("button",{className:"btn sm go",title:"Meeting held — hand off to your AE",onClick:()=>{t.meetingOutcome="HELD";bumpStat("held");saveState("targets");toast("HELD ✓ — HAND OFF TO YOUR AE");rerender()}},"✓ HELD"),
+            h("button",{className:"btn sm alarm",title:"No-show — requeue with a callback tomorrow",onClick:()=>{t.status="WORKING";t.cbDate=addDays(todayKey(),1);delete t.meetingOutcome;bumpStat("noshow");saveState("targets");toast("NO-SHOW — RE-ENGAGE QUEUED TOMORROW");rerender()}},"✗ NO-SHOW")),
+          t.meetingOutcome==="HELD"&&h("span",{className:"stamp",style:{color:"var(--go)",alignSelf:"center"}},"HELD ✓"),
           h("select",{value:t.status,onChange:e=>{t.status=e.target.value;saveState("targets");rerender()},style:{padding:"4px 6px",fontSize:10}},T_STATUSES.map(s=>h("option",{key:s},s))),
           h("button",{className:"btn sm",onClick:()=>setModal(t)},"EDIT"),
           h("button",{className:"btn sm ghost",onClick:()=>{if(confirm("Delete "+(t.name||"target")+"?")){AppState.targets=AppState.targets.filter(x=>x.id!==t.id);saveState("targets");rerender()}}},"✕")))))
@@ -1828,7 +1891,9 @@ function TStats(){
         h("div",{className:"eyebrow"},"WEEK TOTALS"),
         h("div",{className:"mono",style:{fontSize:11,lineHeight:1.9,marginTop:2}},
           h("div",null,wd+" dials · "+wc+" connects"),
-          h("div",null,wv+" convos · ",h("b",{style:{color:"var(--go)"}},wm+" meetings"))))),
+          h("div",null,wv+" convos · ",h("b",{style:{color:"var(--go)"}},wm+" meetings")),
+          (()=>{const wh=sum(wk,"held"),wn=sum(wk,"noshow");
+            return (wh+wn)>0?h("div",null,"show rate ",h("b",{style:{color:pct(wh,wh+wn)>=70?"var(--go)":"var(--alarm)"}},pct(wh,wh+wn)+"%"),` (${wh} held · ${wn} no-show)`):null})()))),
     (()=>{
       const logAll=AppState.callLog||[];
       if(logAll.length<20)return h("div",{className:"blk-flat",style:{padding:"10px 12px",marginBottom:20}},
@@ -2032,7 +2097,7 @@ function App(){
         h("span",{className:"rk"},i+1))),
       h("div",{className:"rail-foot"},
         h("button",{className:"btn sm ghost",style:{width:"100%",marginBottom:7},onClick:()=>setKeys(true),title:"Hotkey cheat sheet (?)"},"? KEYS"),
-        h("div",{className:"mono",style:{fontSize:7.5,color:"var(--dim)",lineHeight:1.6,letterSpacing:".05em"}},"VANTAGE 5.4",h("br"),__fbOK&&__uid?"SYNCED":"LOCAL"))),
+        h("div",{className:"mono",style:{fontSize:7.5,color:"var(--dim)",lineHeight:1.6,letterSpacing:".05em"}},"VANTAGE 5.5",h("br"),__fbOK&&__uid?"SYNCED":"LOCAL"))),
     h("div",{className:"main"},
       h(Andon),
       h(Page,{key:mod+":"+nav,go,initial:sub,initialSection:sub})),
