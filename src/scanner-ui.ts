@@ -2,6 +2,7 @@ import {
   DEFAULT_OPTIONS,
   DEFAULT_SCAN_CONFIG,
   analyzeProfile,
+  analyzeRetracement,
   anchoredVwapBands,
   anchoredVwapSeries,
   computeAnchoredProfile,
@@ -44,6 +45,7 @@ import {
   smaSeries,
   sortMonitorRows,
   type AnomalyReport,
+  type Candle,
   type ChosenAnchor,
   type EarlySignal,
   type InstitutionalRead,
@@ -82,6 +84,7 @@ import { confirmationPanelHtml, confluencePanelHtml, thesisPanelHtml } from "./t
 import { tradePlanPanelHtml, wirePositionSizer } from "./trade-view";
 import { registerChatContext } from "./chat/context";
 import { downloadBackup, importBackup } from "./backup";
+import { retracementPanelHtml } from "./retracement-view";
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -138,6 +141,8 @@ export interface ScannerUi {
   deactivate(): void;
   /** The last scan's ranked results (empty before any scan). */
   results(): ScanResult[];
+  /** Candles for a scanned ticker (empty when not in the last scan). */
+  candlesOf(ticker: string): Candle[];
   /** Open a ticker in the Scanner detail pane (caller switches the tab). */
   select(ticker: string): void;
   /** Provider + key + pacer the Rotation tab shares (ONE calls/min budget). */
@@ -1763,6 +1768,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
         earlyOf(r.ticker),
         detailCandles.length >= 320 ? earlySignal(resampleWeekly(detailCandles)) : null,
       ) +
+      retracementPanelHtml(detailCandles.length ? analyzeRetracement(detailCandles) : null, r.price) +
       proofPanelHtml(proofOf(r.ticker)) +
       disciplinePanelHtml(disc) +
       confluencePanelHtml(r.confluence) +
@@ -2096,6 +2102,7 @@ export function initScanner(setStatus: (msg: string, kind?: "" | "ok" | "error")
       stopRescanTimer();
     },
     results: () => results,
+    candlesOf,
     select,
     dataAccess: () => ({
       providerId: els.scanProvider.value,

@@ -19,6 +19,7 @@ import {
   buildTables,
   anomalyScan,
   decide,
+  analyzeRetracement,
   earlySignal,
   institutionalRead,
   nextSteps,
@@ -43,12 +44,14 @@ import { PROVIDERS, getProvider, parseCsv, type Interval } from "./data";
 import { formatPrice, formatVolume } from "./chart/scale";
 import { initScanner } from "./scanner-ui";
 import { initRotation } from "./rotation-ui";
+import { initPlaybooks } from "./playbooks-ui";
 import { initGuide } from "./guide";
 import { coachPanelHtml } from "./coach-view";
 import { recoPanelHtml } from "./reco-view";
 import { shannonPanelHtml } from "./shannon-view";
 import { disciplinePanelHtml, finalCallPanelHtml } from "./decision-view";
 import { earlyPanelHtml, proofPanelHtml } from "./early-view";
+import { retracementPanelHtml } from "./retracement-view";
 import { anomalyPanelHtml, institutionalPanelHtml } from "./tape-view";
 import { celebrate } from "./celebrate";
 import { loadPositions } from "./journal-store";
@@ -610,6 +613,10 @@ function renderExploreReco(r: ScanResult | null): void {
     early ? `Early signal: ${early.grade} (${early.score.toFixed(0)}/100) — ${early.headline}` : "",
     inst ? `Institutional footprint: ${inst.rating} (${inst.verdict}) — ${inst.headline}` : "",
     tape ? `Tape: ${tape.level} / ${tape.character} — ${tape.headline}` : "Tape: unscreened.",
+    (() => {
+      const rtc = state.candles.length ? analyzeRetracement(state.candles) : null;
+      return rtc ? `Dip grader: ${rtc.verdict.toUpperCase()} (${(rtc.depth * 100).toFixed(0)}% retraced, zone ${rtc.zone}) — ${rtc.headline}` : "";
+    })(),
     activePlan
       ? `Plan (${side}): entry ${formatPrice(activePlan.entry)}, stop ${formatPrice(activePlan.stop)}, T1 ${formatPrice(activePlan.t1)}${activePlan.t1Synthetic ? " (synthetic ~3% marker, not a real level)" : ""} (${activePlan.rMultipleT1.toFixed(1)}R), T2 ${formatPrice(activePlan.t2)}${activePlan.t2Synthetic ? " (synthetic ~3% marker)" : ""} (${activePlan.rMultipleT2.toFixed(1)}R), risk ${(activePlan.riskPct * 100).toFixed(1)}%.`
       : `Plan: none — no support shelf to build one from.`,
@@ -631,6 +638,7 @@ function renderExploreReco(r: ScanResult | null): void {
     (state.candles.length
       ? earlyPanelHtml(early, state.candles.length >= 320 ? earlySignal(resampleWeekly(state.candles)) : null)
       : "") +
+    retracementPanelHtml(state.candles.length ? analyzeRetracement(state.candles) : null, r.price) +
     proofPanelHtml(exploreProof(symbol)) +
     disciplinePanelHtml(disc) +
     (shan
@@ -855,14 +863,17 @@ function initTabs(): void {
   const tabs = document.querySelectorAll<HTMLButtonElement>(".tab");
   // Clicking a stock in the Rotation tab's industry browser opens it in the
   // Scanner detail pane.
-  const rotation = initRotation(setStatus, scanner, (ticker) => {
+  const toScanner = (ticker: string) => {
     document.querySelector<HTMLButtonElement>('.tab[data-view="scanner"]')?.click();
     scanner.select(ticker);
-  });
+  };
+  const rotation = initRotation(setStatus, scanner, toScanner);
+  const playbooks = initPlaybooks(scanner, toScanner);
   const views: Record<string, HTMLElement> = {
     explore: $("view-explore"),
     scanner: $("view-scanner"),
     rotation: $("view-rotation"),
+    playbooks: $("view-playbooks"),
   };
   tabs.forEach((tab) => {
     tab.addEventListener("click", () => {
@@ -872,6 +883,7 @@ function initTabs(): void {
       if (view === "scanner") scanner.activate();
       else scanner.deactivate(); // stop the monitor's auto-refresh polling
       if (view === "rotation") rotation.activate();
+      if (view === "playbooks") playbooks.activate();
       if (view === "explore") chart.resize();
     });
   });

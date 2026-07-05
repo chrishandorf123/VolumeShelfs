@@ -272,6 +272,22 @@ export const GLOSSARY: GlossaryEntry[] = [
     why: "Momentum leads ratio. Watching the momentum axis lets you catch a rotation while the sector still looks weak to everyone reading price alone.",
   },
   {
+    id: "retracement",
+    term: "Retracement vs Reversal (Dip grader)",
+    short: "Is this dip normal profit-taking inside the uptrend, or the start of a trend change?",
+    plain:
+      "Every uptrend pauses. A RETRACEMENT is a temporary dip: light selling volume, short-lived, and it holds one of the Fibonacci zones (38.2%, 50%, or 61.8% of the last up-leg) while higher lows stay intact. A REVERSAL is a trend change: heavy volume, it blows through 61.8%–78.6% of the leg, lower highs start forming, and the prior swing low breaks. The Dip grader panel measures all of this on the most recent impulse leg and calls it: RETRACEMENT (buyable), MIXED, or REVERSAL RISK — with the exact fib prices and the invalidation line (78.6%).",
+    why: "Buying the dip only works when the dip is a retracement. This panel is the difference between buying a discount and catching a falling knife.",
+  },
+  {
+    id: "obv",
+    term: "OBV (On-Balance Volume)",
+    short: "A running total of volume that shows what money is DOING, not what price is saying.",
+    plain:
+      "OBV adds the day's volume when price closes up and subtracts it when price closes down, building one cumulative line. If OBV climbs while price goes nowhere, someone is quietly accumulating (bullish divergence — the IncomeSharks playbook signal). If price rises but OBV won't follow, the rally lacks real buying — a de-risk warning. OBV making a new high before price does is volume leading price.",
+    why: "Volume commits money; price just quotes it. OBV divergences frequently front-run the move price eventually makes.",
+  },
+  {
     id: "early-signal",
     term: "Early signal (stealth accumulation)",
     short: "Tells that precede the breakout the crowd waits for: dry-up, squeeze, OBV in, higher lows, pocket pivot.",

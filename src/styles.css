@@ -3031,3 +3031,345 @@ table.results thead th.tbl-sort.on {
 .link-btn:hover {
   color: #7ea6ff;
 }
+
+/* ---- dip grader (retracement vs reversal) ---- */
+.rtc-verdict {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  letter-spacing: 0.05em;
+  border: 1px solid;
+  margin-bottom: 6px;
+}
+.rtc-none { color: #8b95a7; border-color: #3a445c; }
+.rtc-good { color: #26a69a; border-color: rgba(38, 166, 154, 0.55); background: rgba(38, 166, 154, 0.08); }
+.rtc-warn { color: #f5c842; border-color: rgba(245, 200, 66, 0.55); background: rgba(245, 200, 66, 0.07); }
+.rtc-bad { color: #ef5350; border-color: rgba(239, 83, 80, 0.55); background: rgba(239, 83, 80, 0.08); }
+.rtc-head { margin: 4px 0 6px; font-size: 12.5px; line-height: 1.5; }
+.rtc-stats { font-size: 11px; margin-bottom: 8px; }
+.rtc-ladder { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 8px; }
+.rtc-rung {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 4px 10px;
+  font-size: 11.5px;
+  border-bottom: 1px dashed rgba(139, 149, 167, 0.15);
+}
+.rtc-rung:last-child { border-bottom: none; }
+.rtc-rung.here { background: rgba(91, 141, 239, 0.14); font-weight: 700; }
+.rtc-rung.danger .rtc-lbl { color: #ef5350; }
+.rtc-lbl { flex: 1; color: var(--muted, #8b95a7); }
+.rtc-rung.here .rtc-lbl { color: var(--text); }
+.rtc-you { color: #5b8def; font-size: 10px; font-weight: 800; }
+
+/* ---- Playbooks tab ---- */
+.playbooks-body {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(430px, 1fr));
+  gap: 14px;
+  padding: 14px 16px;
+}
+.pb-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pb-head h3 {
+  margin: 0;
+  font-size: 15px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.pb-handle {
+  font-size: 11.5px;
+  color: #5b8def;
+  text-decoration: none;
+  font-weight: 600;
+}
+.pb-handle:hover { text-decoration: underline; }
+.pb-who { margin: 3px 0 0; font-size: 11.5px; }
+.pb-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 720px) {
+  .pb-cols { grid-template-columns: 1fr; }
+}
+.pb-cols h4 {
+  margin: 0 0 4px;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted, #8b95a7);
+}
+.pb-cols ul {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text);
+}
+.pb-cols li { margin-bottom: 4px; }
+.pb-screen {
+  border: 1px solid rgba(91, 141, 239, 0.3);
+  background: rgba(91, 141, 239, 0.05);
+  border-radius: 9px;
+  padding: 8px 10px;
+}
+.pb-screen-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+.pb-screen-label { font-weight: 800; color: #5b8def; letter-spacing: 0.03em; }
+.pb-hits { display: flex; flex-wrap: wrap; gap: 6px; }
+.pb-hit {
+  border: 1px solid rgba(38, 166, 154, 0.5);
+  background: rgba(38, 166, 154, 0.1);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 3px 9px;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.pb-hit:hover { background: rgba(38, 166, 154, 0.22); }
+.pb-caution {
+  margin: 0;
+  font-size: 11px;
+  color: #f5c842;
+}
+
+/* ============================================================================
+   DESIGN REVAMP — layered over the base styles (cascade wins).
+   Deeper space-dark background, gradient accents, glassy topbar, glowing
+   tabs/buttons, elevated cards, refined tables. Motion respects
+   prefers-reduced-motion (transitions only, no keyframe autoplay).
+   ========================================================================== */
+:root {
+  --bg: #070b14;
+  --panel: #0f1523;
+  --panel-2: #141c2e;
+  --border: #24304a;
+  --text: #eaf0fb;
+  --muted: #93a0b8;
+  --accent: #5b8def;
+  --accent-2: #8b5bef;
+  --grad-accent: linear-gradient(120deg, #5b8def, #7dd7f0 55%, #8b5bef);
+  --glow-accent: 0 0 18px rgba(91, 141, 239, 0.28);
+  --shadow-1: 0 6px 22px rgba(0, 0, 0, 0.42);
+  --radius: 10px;
+}
+
+body {
+  background:
+    radial-gradient(1100px 480px at 82% -12%, rgba(91, 141, 239, 0.09), transparent 62%),
+    radial-gradient(900px 420px at -8% 108%, rgba(139, 91, 239, 0.07), transparent 60%),
+    var(--bg);
+}
+
+/* Topbar: glassy, with a gradient hairline underneath. */
+.topbar {
+  background: rgba(15, 21, 35, 0.86);
+  backdrop-filter: blur(8px);
+  border-bottom: none;
+  position: relative;
+}
+.topbar::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(91, 141, 239, 0.55) 30%, rgba(139, 91, 239, 0.55) 70%, transparent);
+}
+.topbar h1 {
+  background: var(--grad-accent);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+}
+.logo {
+  box-shadow: var(--glow-accent);
+}
+
+/* Tabs: pill group with a glowing active state. */
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: rgba(20, 28, 46, 0.8);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+.tab {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 7px 18px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  transition: color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+.tab:hover {
+  color: var(--text);
+}
+.tab.active {
+  background: linear-gradient(120deg, rgba(91, 141, 239, 0.24), rgba(139, 91, 239, 0.22));
+  color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(91, 141, 239, 0.5), var(--glow-accent);
+}
+
+/* Buttons: gradient primary, glowing ghost hover, gentle lift. */
+button {
+  transition: transform 0.12s ease, box-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease, filter 0.15s ease;
+}
+button.primary {
+  background: linear-gradient(120deg, #4f83ec, #6e63ee);
+  border-color: transparent;
+  box-shadow: 0 2px 12px rgba(91, 141, 239, 0.35);
+}
+button.primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 18px rgba(91, 141, 239, 0.5);
+}
+button.ghost:hover {
+  border-color: rgba(91, 141, 239, 0.55);
+  box-shadow: 0 0 0 1px rgba(91, 141, 239, 0.18);
+  background: rgba(91, 141, 239, 0.07);
+}
+
+/* Inputs: focus ring instead of nothing. */
+input[type="text"]:focus,
+input[type="password"]:focus,
+input[type="search"]:focus,
+input[type="number"]:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: rgba(91, 141, 239, 0.65);
+  box-shadow: 0 0 0 3px rgba(91, 141, 239, 0.16);
+}
+
+/* Panels: accent tick on headers, soft elevation. */
+.panel {
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset;
+}
+.panel h2 {
+  position: relative;
+  padding-left: 10px;
+}
+.panel h2::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 3px;
+  bottom: 3px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--grad-accent);
+}
+
+/* Interactive cards: lift on hover. */
+.dg-card,
+.pb-card,
+.stealth-chip,
+.ind-member,
+.rot-chart-wrap,
+.rot-table-wrap {
+  transition: transform 0.14s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+.dg-card:hover,
+.pb-card:hover,
+.ind-member:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-1);
+  border-color: rgba(91, 141, 239, 0.45);
+}
+
+/* Tables: hover accent + calmer headers. */
+table.results tbody tr,
+table.mon-table tbody tr {
+  transition: background 0.12s ease;
+}
+table.results tbody tr:hover td,
+table.mon-table tbody tr:hover td {
+  background: rgba(91, 141, 239, 0.06);
+}
+table.results tbody tr.sel td {
+  background: rgba(91, 141, 239, 0.12);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+/* Mission Control: gradient numerals. */
+.mission b,
+.mission .m-num {
+  background: var(--grad-accent);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Slim, dark scrollbars everywhere. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2b3752 transparent;
+}
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #2b3752;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #3a4a6e;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+/* Chat FAB picks up the gradient treatment. */
+.chat-fab {
+  background: linear-gradient(135deg, #16203a, #101a30);
+  border-color: rgba(91, 141, 239, 0.6);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button,
+  .tab,
+  .dg-card,
+  .pb-card,
+  .stealth-chip,
+  .ind-member {
+    transition: none;
+  }
+}
+
+/* Rotation + Playbooks views scroll inside the fixed-height app column. */
+#view-rotation,
+#view-playbooks {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}

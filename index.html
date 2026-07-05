@@ -24,6 +24,7 @@
           <button class="tab active" data-view="explore">Explore</button>
           <button class="tab" data-view="scanner">Scanner</button>
           <button class="tab" data-view="rotation">Rotation</button>
+          <button class="tab" data-view="playbooks">Playbooks</button>
         </nav>
         <button id="guideBtn" class="guide-btn" title="Plain-English guide to every term">? Guide</button>
         <div class="topbar-status" id="status" role="status"></div>
@@ -306,8 +307,6 @@
           </aside>
         </main>
       </div>
-    </div>
-
     <div id="view-rotation" hidden>
       <section class="controls rotation-controls">
         <div class="control rot-blurb">
@@ -342,6 +341,18 @@
         </div>
         <div id="industryBody" class="monitor-body"></div>
       </section>
+    </div>
+
+    <div id="view-playbooks" hidden>
+      <section class="controls playbooks-controls">
+        <div class="control rot-blurb">
+          <label>Trader playbooks</label>
+          <p class="muted">The public methods of well-known market voices — what they do, how this app maps it, and live screens over your scan. Educational style summaries; none of them endorse this app, and none of this is advice.</p>
+        </div>
+        <div class="control"><span class="tk-count" id="pbMeta"></span></div>
+      </section>
+      <div id="playbooksBody" class="playbooks-body"></div>
+    </div>
     </div>
 
     <div id="guideOverlay" class="guide-overlay" hidden>

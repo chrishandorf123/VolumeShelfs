@@ -117,6 +117,40 @@ Sources: [StockCharts ChartSchool — Relative Rotation Graphs](https://chartsch
 [TrendSpider — Sector Rotation: Track Where the Money Is Moving](https://trendspider.com/blog/sector-rotation-how-to-track-where-the-money-is-moving/),
 [StockCharts — Using RRGs to Visualize Sector Rotation](https://articles.stockcharts.com/article/articles-rrg-2025-07-using-relative-rotation-graphs-to-visualize-sector-rotation/)
 
+## Retracement vs reversal (the Dip grader)
+
+Implements the classic Investopedia framework for telling a pullback from a
+trend change: retracements are LOW-volume, short-lived counter-moves that hold
+Fibonacci zones (38.2–61.8% of the prior impulse) with trend structure (higher
+lows) intact; reversals come on HIGH volume, run beyond 61.8–78.6%, build
+lower highs, and break the prior swing low. The Dip grader
+(core/retracement.ts) measures each of those on the most recent impulse leg
+and reports a verdict + the fib ladder + the 78.6% invalidation.
+
+Sources: [Investopedia — Retracement or Reversal: Know the Difference](https://www.investopedia.com/articles/trading/05/020305.asp),
+[Investopedia — Retracements vs Reversals](https://www.investopedia.com/articles/trading/06/retracements.asp),
+[FXOpen — Retracement vs Reversal](https://fxopen.com/blog/en/retracement-vs-reversal-whats-the-difference/)
+
+## Trader playbooks (the Playbooks tab)
+
+Style summaries are drawn from each account's own public output; the live
+screens implement the mechanical part of each style honestly and say so when
+no data exists (CapitolTrades). Key sources:
+
+- IncomeSharks — OBV-first analysis, OBV trendlines, double SuperTrend:
+  [their X account](https://x.com/IncomeSharks),
+  [strategy writeup](https://bitcoinshrimps.medium.com/using-the-incomesharks-trading-strategy-a-simple-but-very-effective-strategy-c59c99b961d6),
+  [TradingView scripts](https://www.tradingview.com/u/IncomeSharks/)
+- Peter Brandt — classical charting, 1% risk, pattern-invalidation stops:
+  [Factor Trading](https://www.peterlbrandt.com/),
+  [Four Pillars of Factor](https://www.peterlbrandt.com/knowledge-center/four-key-pillars-factor/)
+- Howard Lindzon — momentum near all-time highs ("8s to 80s"): his public
+  posts and StockTwits writing.
+- Steve Burns, Liz Ann Sonders, Charlie Bilello, Barry Ritholtz,
+  CapitolTrades, Walter Vannelli, Tnut, Tradinglord — style summaries from
+  their public accounts; descriptive cards only where the app has no
+  matching data feed.
+
 ## Honest limitations (nothing is fool-proof)
 
 - Client-side EOD/delayed data — not tick-accurate; fills are assumed, not real.
