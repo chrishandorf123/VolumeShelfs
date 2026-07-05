@@ -586,6 +586,7 @@ const KEYMAP=[
    ["1–9","Jump to a module — the rail shows each key"],
    ["⌘K / CTRL K","Command palette: search everything, run anything"],
    ["/","Command palette"],
+   ["O","Objection lookup — anywhere, not just on calls"],
    ["?","This cheat sheet"],
    ["ESC","Close any overlay · leave a text field"]]},
  {sec:"DIAL — LIVE CALL",keys:[
@@ -1339,6 +1340,14 @@ function TTargets({go,initial}){
       h("h1",null,"Targets"),
       h("span",{className:"mono dim",style:{fontSize:11}},AppState.targets.length+" total"),
       h("div",{className:"grow"}),
+      h("button",{className:"btn ghost",title:"Download the current filtered list as CSV",onClick:()=>{
+        const esc=v=>{v=String(v==null?"":v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
+        const rows=[["name","company","title","phone","status","persona","hub","touches","lastTouch","notes"]]
+          .concat(list.map(t=>[t.name,t.company,t.title,t.phone,t.status,(D.PERSONAS[t.personaIdx]||{}).title||"",t.hub,t.touches||0,t.lastTouch||"",t.notes]));
+        const csv=rows.map(r=>r.map(esc).join(",")).join("\n");
+        const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="vantage-targets-"+todayKey()+".csv";a.click();
+        toast(list.length+" TARGETS EXPORTED");
+      }},"⬆ EXPORT CSV"),
       h("button",{className:"btn",onClick:()=>setImp(true)},"⬇ IMPORT CSV"),
       h("button",{className:"btn primary",onClick:()=>setModal("new")},"+ ADD TARGET"),
       h("button",{className:"btn go",onClick:()=>go("dial")},"▶ DIAL QUEUE")),
@@ -1818,6 +1827,11 @@ function TCadence({go}){
   const byDay={};cad.steps.forEach((s,i)=>{(byDay[s.day]=byDay[s.day]||[]).push({...s,i})});
   const days=Object.keys(byDay).map(Number).sort((a,b)=>a-b);
   const calls=cad.steps.filter(s=>s.ch==="call").length;
+  /* live distribution: only the first cadence drives the Targets engine */
+  const isDefaultCad=selIdx===0;
+  const active=isDefaultCad?AppState.targets.filter(t=>t.status==="QUEUE"||t.status==="WORKING"):[];
+  const atStep=i=>active.filter(t=>(t.touches||0)===i).length;
+  const doneCount=active.filter(t=>(t.touches||0)>=cad.steps.length).length;
   return h("div",{className:"stage anim-up"},
     modal&&h(StepForm,{initial:modal==="new"?null:modal.step,onSave:saveStep,onCancel:()=>setModal(null)}),
     h("div",{className:"pagehead"},
@@ -1836,6 +1850,8 @@ function TCadence({go}){
         h("button",{className:"btn sm",onClick:()=>setModal("new")},"+ ADD TOUCH"),
         h("button",{className:"btn sm ghost",onClick:delCadence},"DELETE CADENCE")),
       cad.note&&h("div",{className:"mono dim",style:{fontSize:10,marginBottom:12,lineHeight:1.6}},cad.note),
+      isDefaultCad&&active.length>0&&h("div",{className:"mono dim",style:{fontSize:10,marginBottom:12}},
+        active.length+" active targets moving through this cadence",doneCount>0?" · "+doneCount+" completed it (breakup or nurture time)":""),
       h("div",{style:{display:"flex",flexDirection:"column",gap:0}},
         days.map((d,di)=>h("div",{key:d,style:{display:"flex",gap:14,alignItems:"stretch"}},
           h("div",{style:{width:58,flexShrink:0,display:"flex",flexDirection:"column",alignItems:"center"}},
@@ -1848,6 +1864,7 @@ function TCadence({go}){
               h("span",{style:{fontSize:15}},CH_META[s.ch]?CH_META[s.ch].i:"•"),
               h("span",{className:"stamp",style:{fontSize:8,color:CH_META[s.ch]?CH_META[s.ch].c:"var(--dim)"}},s.ch.toUpperCase()),
               h("span",{style:{fontSize:12.5,fontWeight:600,flex:1,minWidth:140}},s.label),
+              isDefaultCad&&atStep(s.i)>0&&h("span",{className:"stamp",style:{fontSize:8,color:"var(--sig)"},title:"Active targets currently at this step"},atStep(s.i)+" HERE"),
               s.tpl&&h("button",{className:"btn sm ghost",onClick:()=>go("messages")},"tpl: "+((getTemplates().find(t=>t.id===s.tpl)||{}).name||s.tpl)),
               h("button",{className:"btn sm ghost",onClick:()=>setModal({step:s,idx:s.i})},"✎"),
               h("button",{className:"btn sm ghost",onClick:()=>delStep(s.i)},"✕")))))))),
@@ -2078,6 +2095,7 @@ function App(){
   const [nav,setNav]=useState(0);
   const [palette,setPalette]=useState(false);
   const [keys,setKeys]=useState(false);
+  const [objLookup,setObjLookup]=useState(false);
   const modRef=useRef(mod);modRef.current=mod;
   /* remount the page only on a real module change or a deep link — a rail click
      on the current module must stay a no-op (e.g. mid dial session) */
@@ -2091,6 +2109,7 @@ function App(){
   useHotkeys(e=>{
     if(e.key==="?"){setKeys(v=>!v);return true}
     if(e.key==="/"){setPalette(true);return true}
+    if(e.key.toLowerCase()==="o"){setObjLookup(true);return true}  /* shadowed by LiveCall during a live call */
     if(/^[1-9]$/.test(e.key)){
       const m=MODULES[+e.key-1];
       if(m){go(m.id);return true}
@@ -2108,12 +2127,13 @@ function App(){
         h("span",{className:"rk"},i+1))),
       h("div",{className:"rail-foot"},
         h("button",{className:"btn sm ghost",style:{width:"100%",marginBottom:7},onClick:()=>setKeys(true),title:"Hotkey cheat sheet (?)"},"? KEYS"),
-        h("div",{className:"mono",style:{fontSize:7.5,color:"var(--dim)",lineHeight:1.6,letterSpacing:".05em"}},"VANTAGE 5.7",h("br"),__fbOK&&__uid?"SYNCED":"LOCAL"))),
+        h("div",{className:"mono",style:{fontSize:7.5,color:"var(--dim)",lineHeight:1.6,letterSpacing:".05em"}},"VANTAGE 5.8",h("br"),__fbOK&&__uid?"SYNCED":"LOCAL"))),
     h("div",{className:"main"},
       h(Andon),
       h(Page,{key:mod+":"+nav,go,initial:sub,initialSection:sub})),
     palette&&h(Palette,{onClose:()=>setPalette(false),go}),
-    keys&&h(KeysOverlay,{onClose:()=>setKeys(false)}));
+    keys&&h(KeysOverlay,{onClose:()=>setKeys(false)}),
+    objLookup&&h(ObjOverlay,{onClose:()=>setObjLookup(false)}));
 }
 /* ================= GATE + BOOT ================= */
 function bootApp(){

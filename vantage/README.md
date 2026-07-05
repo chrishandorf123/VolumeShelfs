@@ -1,6 +1,12 @@
-# VANTAGE 5.7 — Cold Call Command
+# VANTAGE 5.8 — Cold Call Command
 
 Single-file app (`index.html`) — no build step. Deploy anywhere that serves static files.
+
+## New in 5.8
+
+- **`O` works everywhere**: objection lookup opens from any screen — writing an email, browsing the playbook, mid-drill — not just on live calls.
+- **Cadence shows the pipeline**: each step on the timeline shows how many active targets are sitting at it ("n HERE"), plus totals for in-cadence and cadence-complete targets — see where prospects pile up.
+- **Targets ⬆ EXPORT CSV**: round-trip with import — download the current filtered list (name, company, title, phone, status, persona, hub, touches, last touch, notes) for CRM sync.
 
 ## New in 5.7
 
