@@ -1,6 +1,13 @@
-# VANTAGE 5.5 — Cold Call Command
+# VANTAGE 5.7 — Cold Call Command
 
 Single-file app (`index.html`) — no build step. Deploy anywhere that serves static files.
+
+## New in 5.7
+
+- **Objection Gym cards show your drill record** (✓/✕ counts) with a WEAK SPOT flag at ≥40% miss rate — your practice data visible where you browse, not just inside drill mode.
+- **Stats: week-over-week deltas** — dials and meetings vs the prior 7 recorded days, colored by direction.
+- Sprint HUD wraps cleanly on narrow screens.
+- Gartner battle intel shipped in 5.6: the "Know Thyself" card (the three real 2022 MQ cautions competitors quote at Tulip + date-stamped counters), DELMIA licensing/architecture attack lines, and the 60%-composable-by-2025 prediction.
 
 ## New in 5.5 — Power Hour and the honest funnel
 

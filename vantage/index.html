@@ -1111,7 +1111,7 @@ function LiveCall({queueIds,sprint,onEnd}){
         const goalFrac=Math.min(1,log.length/sprint.goal);
         const pace=goalFrac>=timeFrac?(goalFrac-timeFrac>0.08?{t:"AHEAD",c:"var(--go)"}:{t:"ON PACE",c:"var(--go)"}):{t:"BEHIND — DIAL",c:"var(--amber)"};
         return h("div",{style:{padding:"9px 20px",borderBottom:"2px solid var(--line)",background:remain<=0?"var(--alarmbg)":"var(--panel2)"}},
-          h("div",{className:"row",style:{gap:12}},
+          h("div",{className:"row",style:{gap:12,flexWrap:"wrap"}},
             h("span",{className:"eyebrow",style:{color:"var(--sig)"}},"POWER HOUR"),
             h("span",{className:"mono",style:{fontWeight:700,fontSize:15,fontVariantNumeric:"tabular-nums",color:remain<=60?"var(--alarm)":"var(--ink)"}},fmtClock(Math.ceil(remain))),
             h("div",{className:"bar grow"},h("i",{style:{width:(goalFrac*100)+"%",background:"var(--go)"}})),
@@ -1658,6 +1658,11 @@ function TObjections({initial}){
         h("div",{className:"row",style:{marginBottom:6}},
           h("b",{style:{fontFamily:"var(--mono)",fontSize:12.5}},o.name),
           h("span",{className:"stamp",style:{fontSize:8,color:"var(--amber)"}},o.tag),
+          (()=>{const s=AppState.drillStats[o.id];if(!s||!(s.hit+s.miss))return null;
+            const weak=s.miss/(s.hit+s.miss)>=0.4;
+            return h(F,null,
+              h("span",{className:"mono dim",style:{fontSize:9},title:"Your drill record"},"✓"+s.hit+" ✕"+s.miss),
+              weak&&h("span",{className:"stamp",style:{fontSize:7.5,color:"var(--alarm)"}},"WEAK SPOT"));})(),
           h("div",{className:"grow"}),
           o.custom&&h("button",{className:"btn sm ghost",onClick:()=>setModal(o)},"✎"),
           o.custom&&h("button",{className:"btn sm ghost",onClick:()=>{AppState.customObjections=AppState.customObjections.filter(x=>x.id!==o.id);saveState("customObjections");force(x=>x+1)}},"✕")),
@@ -1893,7 +1898,13 @@ function TStats(){
           h("div",null,wd+" dials · "+wc+" connects"),
           h("div",null,wv+" convos · ",h("b",{style:{color:"var(--go)"}},wm+" meetings")),
           (()=>{const wh=sum(wk,"held"),wn=sum(wk,"noshow");
-            return (wh+wn)>0?h("div",null,"show rate ",h("b",{style:{color:pct(wh,wh+wn)>=70?"var(--go)":"var(--alarm)"}},pct(wh,wh+wn)+"%"),` (${wh} held · ${wn} no-show)`):null})()))),
+            return (wh+wn)>0?h("div",null,"show rate ",h("b",{style:{color:pct(wh,wh+wn)>=70?"var(--go)":"var(--alarm)"}},pct(wh,wh+wn)+"%"),` (${wh} held · ${wn} no-show)`):null})(),
+          (()=>{const pv=days.slice(7,14);if(!pv.length)return null;
+            const delta=(cur,prev)=>prev>0?Math.round((cur-prev)/prev*100):null;
+            const dd=delta(wd,sum(pv,"dials")),dm=delta(wm,sum(pv,"meetings"));
+            const fmt=v=>v==null?"—":(v>=0?"+":"")+v+"%";
+            const col=v=>v==null?"var(--dim)":v>=0?"var(--go)":"var(--alarm)";
+            return h("div",{title:"Last 7 recorded days vs the 7 before"},"vs prior wk: dials ",h("b",{style:{color:col(dd)}},fmt(dd))," · mtgs ",h("b",{style:{color:col(dm)}},fmt(dm)));})()))),
     (()=>{
       const logAll=AppState.callLog||[];
       if(logAll.length<20)return h("div",{className:"blk-flat",style:{padding:"10px 12px",marginBottom:20}},
@@ -2097,7 +2108,7 @@ function App(){
         h("span",{className:"rk"},i+1))),
       h("div",{className:"rail-foot"},
         h("button",{className:"btn sm ghost",style:{width:"100%",marginBottom:7},onClick:()=>setKeys(true),title:"Hotkey cheat sheet (?)"},"? KEYS"),
-        h("div",{className:"mono",style:{fontSize:7.5,color:"var(--dim)",lineHeight:1.6,letterSpacing:".05em"}},"VANTAGE 5.6",h("br"),__fbOK&&__uid?"SYNCED":"LOCAL"))),
+        h("div",{className:"mono",style:{fontSize:7.5,color:"var(--dim)",lineHeight:1.6,letterSpacing:".05em"}},"VANTAGE 5.7",h("br"),__fbOK&&__uid?"SYNCED":"LOCAL"))),
     h("div",{className:"main"},
       h(Andon),
       h(Page,{key:mod+":"+nav,go,initial:sub,initialSection:sub})),
