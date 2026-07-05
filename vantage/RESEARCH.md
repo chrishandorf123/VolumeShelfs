@@ -71,3 +71,13 @@ Coverage gaps are the biggest caveat: of the four research areas requested, only
 - New verified case cards: Tulip company facts ($120M Series D Jan 2026 led by Mitsubishi Electric, $1.3B valuation, 43K apps/60K workers/1K sites/45 countries, gen-AI +364%/automations +519%, IDC MarketScape 2024–25 Leader), VEKA −88% quality escapes, Innovafeed +500%, Reframe 2.5x, Zaleco −20% scrap, Formlabs −20% lead time, Test Devices +50%, Deloitte 2026 Outlook budget stat.
 - Pratt Miller and DMG MORI cards kept (DMG MORI is verified qualitative); Pratt Miller flagged ⚠ VERIFY FIRST.
 - NOT changed (no verified data found): competitor battle-card attack lines and the SDR cold-calling benchmarks (connect rates, call windows, Gong opener stats) — treat those as unverified craft wisdom, not cited fact.
+
+## Research pass 2 — competitor intel + call benchmarks (partial, July 5 2026)
+
+**Verified 3-0 and folded into the app:**
+
+1. Gartner's 2022 MES Magic Quadrant (May 31, 2022) predicted "by 2025, 60% of new MES solutions will be assembled … using composable technology." (Vintage: a 2022 prediction — cite it as that.)
+2. The same report rated Tulip a **Challenger**, endorsed its app-library approach as aligned with Gartner's composability vision, and documented the three cautions competitors quote at Tulip: MES-specific processes "often need additional effort by the customer or a Tulip partner"; flexibility "requires governance and discipline"; customers say Tulip "is often nearly as expensive as the solution it is replacing." → now a "Know Thyself" battle card with honest, date-stamped counters.
+3. DELMIA Apriso (Challenger, same MQ): clients report resource-based licensing "limits expansion and deployment in further facilities"; cloud-native evolution flagged as a 3–5 year journey. → folded into the DELMIA battle card and landmine questions.
+
+**Found with named sources but NOT yet verified** (verification agents hit a usage limit; do not cite until the verification pass completes): Cognism 2025/2026 cold-calling reports (2.7% success rate, Thursday best day, 10–11am best window — notably contradicting the 4–5pm folklore), Gong Labs 2024 (300M+ calls), Orum State of Cold Calling, Bridge Group SDR metrics, SAP/Plex Gartner-documented weaknesses, and the "4–5pm best time" folklore trace. These remain OUT of the app until verified.
