@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Trail — quiet signals</title>
+    <meta
+      name="description"
+      content="A quiet, open reconstruction of paid trail + CALL/PUT overlays: double SuperTrend trail, one signal per regime, outcomes replayed honestly."
+    />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230e1117'/%3E%3Ccircle cx='8' cy='22' r='2.4' fill='%2326a69a'/%3E%3Ccircle cx='16' cy='16' r='2.4' fill='%2326a69a'/%3E%3Ccircle cx='24' cy='10' r='2.4' fill='%2326a69a'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="brand">
+          <span class="logo" aria-hidden="true"></span>
+          <div>
+            <h1>Trail</h1>
+            <p>quiet signals — double SuperTrend trail · one signal per regime</p>
+          </div>
+        </div>
+        <div class="data-controls">
+          <select id="dataset" title="Bundled offline demo series"></select>
+          <button id="csvBtn" class="ghost" type="button" title="Import a daily OHLCV CSV — TradingView, Yahoo, Stooq and most broker exports work">Import CSV</button>
+          <input id="csvInput" type="file" accept=".csv,text/csv" hidden />
+          <span class="status" id="status" role="status"></span>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <div class="chart-wrap">
+          <div class="tf-bar" id="tfBar" role="group" aria-label="Timeframe">
+            <span class="tf-label">Timeframe</span>
+            <button class="tf" data-bars="63">3M</button>
+            <button class="tf active" data-bars="126">6M</button>
+            <button class="tf" data-bars="252">1Y</button>
+            <button class="tf" data-bars="0">All</button>
+          </div>
+          <canvas id="chart"></canvas>
+          <div class="hint">Dots = the trail while both SuperTrends agree — no dots means stand aside · scroll to zoom · drag to pan · double-click to reset</div>
+        </div>
+        <aside class="sidebar">
+          <div id="statePanel"></div>
+          <div id="statsPanel"></div>
+          <div id="signalsPanel"></div>
+          <details class="panel">
+            <summary>How a signal fires (the whole rulebook)</summary>
+            <ol class="trail-rules">
+              <li>Two SuperTrends — tight (10, ×1.5) and loose (11, ×2.5) — must BOTH flip to the same side. One signal per regime, maximum.</li>
+              <li>On the entry bar the close must be on the signal's side of the 20-bar EMA (up to 5 bars of grace after the flip for the gates to catch up).</li>
+              <li>OBV's 10-bar direction must not contradict the side — no signal against the volume flow.</li>
+              <li>Plan attached at entry: stop = the loose trail, target = entry ± 2R. Outcomes replayed bar-by-bar: stop first when one bar spans both.</li>
+            </ol>
+          </details>
+          <details class="panel">
+            <summary>Loading your own data</summary>
+            <p class="muted about">This page runs entirely in your browser — nothing is uploaded anywhere. Import a daily OHLCV CSV (date, open, high, low, close, volume; header optional) from TradingView, Yahoo Finance, Stooq or most brokers, and the trail, signals and replay stats recompute on your data. The last import is remembered on this device.</p>
+          </details>
+          <p class="caution">⚠ An open reconstruction of the paid "trail + CALL/PUT" overlay style (à la Sharks Stock Trader) — NOT IncomeSharks' script; signals will not match theirs. Replay stats are in-sample: a sanity check, not proof of edge. Educational only, not financial advice.</p>
+        </aside>
+      </main>
+    </div>
+    <script type="module" src="/src/trail-standalone.ts"></script>
+  </body>
+</html>

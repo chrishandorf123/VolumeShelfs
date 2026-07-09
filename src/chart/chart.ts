@@ -76,6 +76,8 @@ export interface ChartModel {
   /** Stretch the price axis to the WHOLE profile (full-history mode) so
    *  shelves far above/below the visible candles stay on screen. */
   fitProfileRange?: boolean;
+  /** No profile gutter — candles span the full plot (profile-less views). */
+  fullWidthCandles?: boolean;
 }
 
 const MARGIN = { top: 14, right: 64, bottom: 24, left: 8 };
@@ -257,7 +259,9 @@ export class VolumeShelfsChart {
     // Candles occupy the left of the plot; the right is a gutter for the volume
     // profile plus a little future whitespace, so the newest bars are never
     // hidden behind the profile and you can see where price sits in the gaps.
-    const candleAreaWidth = this.plot.width * (1 - PROFILE_GUTTER_FRAC - FUTURE_PAD_FRAC);
+    // Profile-less views reclaim the gutter (keep a sliver of breathing room).
+    const gutter = this.model?.fullWidthCandles ? 0.02 : PROFILE_GUTTER_FRAC + FUTURE_PAD_FRAC;
+    const candleAreaWidth = this.plot.width * (1 - gutter);
     this.indexAxis = new IndexAxis(start, visibleCount, this.plot.x, candleAreaWidth);
   }
 

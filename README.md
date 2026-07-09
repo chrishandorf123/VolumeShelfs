@@ -35,7 +35,9 @@ The app's tabs:
 - **Trail** — a quiet, open reconstruction of the paid "trail + CALL/PUT"
   overlays (double SuperTrend trail; a signal only when both trails flip AND
   the EMA/OBV gates agree), with every past signal replayed honestly into win
-  rate and expectancy.
+  rate and expectancy. Also available as a fully standalone page: `trail.html`
+  in dev (`http://localhost:5173/trail.html`), or `npm run build:trail` for a
+  self-contained bundle in `dist-trail/` with offline demo data + CSV import.
 - **Playbooks** — the public methods of well-known traders as cards, with live
   screens over your last scan.
 
