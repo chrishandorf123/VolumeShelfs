@@ -10,3 +10,4 @@ coverage/
 src/core/_*.ts
 src/core/zz_*.ts
 src/**/*_probe*.ts
+dist-trail/
