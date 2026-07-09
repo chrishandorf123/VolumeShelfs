@@ -24,12 +24,20 @@ anchor, and *price above a rising AVWAP* + an **AVWAP reclaim**, **confluence
 You anchor the profile from a swing low or swing high (or click any candle), and
 the engine recomputes the shelves, gaps and break-even zones live.
 
-The app has two tabs:
+The app's tabs:
 
 - **Explore** — load one symbol and study its anchored volume profile.
 - **Scanner** — run the full *Volume Shelf Scanner* checklist across a universe
   of tickers, rank the candidates, and drill into each one's chart, gates,
   trade plan and confirmation checklist.
+- **Rotation** — a Relative Rotation (RRG) read of the 11 sector ETFs vs SPY:
+  where the money is going before you pick tickers.
+- **Trail** — a quiet, open reconstruction of the paid "trail + CALL/PUT"
+  overlays (double SuperTrend trail; a signal only when both trails flip AND
+  the EMA/OBV gates agree), with every past signal replayed honestly into win
+  rate and expectancy.
+- **Playbooks** — the public methods of well-known traders as cards, with live
+  screens over your last scan.
 
 ![overview](docs/overview.png)
 ![scanner](docs/scanner.png)

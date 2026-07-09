@@ -72,15 +72,23 @@ export function obvRead(candles: Candle[], k = 20, window = 60): ObvRead | null 
 }
 
 // ---- SuperTrend ---------------------------------------------------------------
+export interface SupertrendSeries {
+  /** +1 = uptrend, −1 = downtrend (NaN-warmup bars are 0). */
+  dirs: number[];
+  /** The active band price per bar — the lower band in an uptrend (a trailing
+   *  stop under price), the upper band in a downtrend (NaN during warmup). */
+  trail: number[];
+}
+
 /**
  * Classic SuperTrend: ±mult·ATR bands around HL2 with the standard ratchet;
- * +1 = uptrend (price above the lower band), −1 = downtrend. Returns the
- * per-bar direction series (NaN-warmup bars are 0).
+ * +1 = uptrend (price above the lower band), −1 = downtrend.
  */
-export function supertrendDirs(candles: Candle[], period = 10, mult = 3): number[] {
+export function supertrendSeries(candles: Candle[], period = 10, mult = 3): SupertrendSeries {
   const n = candles.length;
   const atr = atrSeries(candles, period);
   const dirs = new Array<number>(n).fill(0);
+  const trail = new Array<number>(n).fill(NaN);
   let up = NaN; // final lower band (support in uptrend)
   let dn = NaN; // final upper band (resistance in downtrend)
   let dir = 1;
@@ -99,8 +107,14 @@ export function supertrendDirs(candles: Candle[], period = 10, mult = 3): number
     if (dir === 1 && close < up) dir = -1;
     else if (dir === -1 && close > dn) dir = 1;
     dirs[i] = dir;
+    trail[i] = dir === 1 ? up : dn;
   }
-  return dirs;
+  return { dirs, trail };
+}
+
+/** Per-bar SuperTrend direction series (see supertrendSeries). */
+export function supertrendDirs(candles: Candle[], period = 10, mult = 3): number[] {
+  return supertrendSeries(candles, period, mult).dirs;
 }
 
 /** IncomeSharks-style DOUBLE SuperTrend: both a tight and a loose setting must

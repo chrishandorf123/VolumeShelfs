@@ -16,6 +16,10 @@ export interface SeriesOverlay {
   values: number[];
   color: string;
   dashed?: boolean;
+  /** "dots" renders disconnected points (a trailing-stop trail) instead of a line. */
+  style?: "line" | "dots";
+  /** Skip the inline label at the last point (dot trails label themselves). */
+  noLabel?: boolean;
 }
 
 export interface LevelOverlay {
@@ -25,11 +29,25 @@ export interface LevelOverlay {
   dashed?: boolean;
 }
 
+/** A per-bar event tag (signal entry/exit) anchored to a candle. */
+export interface MarkerOverlay {
+  index: number;
+  price: number;
+  text: string;
+  color: string;
+  /** Place the tag above or below the bar. */
+  position: "above" | "below";
+  /** Emphasized = filled tag with a pointer (entries); plain text otherwise. */
+  emphasis?: boolean;
+}
+
 export interface ChartOverlays {
   /** Line overlays plotted against the candle index (AVWAPs, MAs). */
   series?: SeriesOverlay[];
   /** Horizontal price levels (entry, stop, targets). */
   levels?: LevelOverlay[];
+  /** Signal tags anchored to individual bars. */
+  markers?: MarkerOverlay[];
 }
 
 /** A suggested anchor pivot the coach marks on the chart (click to anchor). */
@@ -505,33 +523,49 @@ export class VolumeShelfsChart {
     ctx.rect(plot.x, plot.y, plot.width, plot.height);
     ctx.clip();
     for (const s of overlays.series ?? []) {
-      ctx.strokeStyle = s.color;
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash(s.dashed ? [4, 3] : []);
-      ctx.beginPath();
       let started = false;
       let lastX = 0;
       let lastY = 0;
-      for (let i = 0; i < s.values.length; i++) {
-        const v = s.values[i];
-        if (!Number.isFinite(v)) {
-          started = false;
-          continue;
-        }
-        const x = indexAxis.x(i);
-        const y = priceAxis.y(v);
-        if (!started) {
-          ctx.moveTo(x, y);
+      if (s.style === "dots") {
+        ctx.fillStyle = s.color;
+        for (let i = 0; i < s.values.length; i++) {
+          const v = s.values[i];
+          if (!Number.isFinite(v)) continue;
+          const x = indexAxis.x(i);
+          const y = priceAxis.y(v);
+          ctx.beginPath();
+          ctx.arc(x, y, 2, 0, Math.PI * 2);
+          ctx.fill();
           started = true;
-        } else {
-          ctx.lineTo(x, y);
+          lastX = x;
+          lastY = y;
         }
-        lastX = x;
-        lastY = y;
+      } else {
+        ctx.strokeStyle = s.color;
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash(s.dashed ? [4, 3] : []);
+        ctx.beginPath();
+        for (let i = 0; i < s.values.length; i++) {
+          const v = s.values[i];
+          if (!Number.isFinite(v)) {
+            started = false;
+            continue;
+          }
+          const x = indexAxis.x(i);
+          const y = priceAxis.y(v);
+          if (!started) {
+            ctx.moveTo(x, y);
+            started = true;
+          } else {
+            ctx.lineTo(x, y);
+          }
+          lastX = x;
+          lastY = y;
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
       }
-      ctx.stroke();
-      ctx.setLineDash([]);
-      if (started) {
+      if (started && !s.noLabel) {
         ctx.font = "10px system-ui, sans-serif";
         ctx.fillStyle = s.color;
         ctx.textAlign = "right";
@@ -540,6 +574,8 @@ export class VolumeShelfsChart {
       }
     }
     ctx.restore();
+
+    this.drawMarkers(overlays.markers ?? []);
 
     for (const lvl of overlays.levels ?? []) {
       const y = Math.round(priceAxis.y(lvl.price)) + 0.5;
@@ -556,6 +592,54 @@ export class VolumeShelfsChart {
       ctx.textAlign = "left";
       ctx.textBaseline = "bottom";
       ctx.fillText(lvl.label, plot.x + 6, y - 2);
+    }
+  }
+
+  /** Signal tags (entries/exits) anchored to bars, drawSuggestions-style. */
+  private drawMarkers(markers: MarkerOverlay[]): void {
+    if (!markers.length || !this.priceAxis || !this.indexAxis) return;
+    const { ctx, priceAxis, indexAxis, plot, visible } = this;
+    for (const m of markers) {
+      if (m.index < visible.start || m.index > visible.end) continue;
+      const x = indexAxis.x(m.index);
+      const below = m.position === "below";
+      const yBase = priceAxis.y(m.price);
+      const y = below ? Math.min(yBase + 14, plot.y + plot.height - 4) : Math.max(yBase - 14, plot.y + 10);
+      ctx.save();
+      ctx.font = `${m.emphasis ? "bold " : ""}10px system-ui, sans-serif`;
+      const w = ctx.measureText(m.text).width + 10;
+      if (m.emphasis) {
+        // pointer triangle toward the bar
+        ctx.fillStyle = m.color;
+        ctx.beginPath();
+        if (below) {
+          ctx.moveTo(x, y - 6);
+          ctx.lineTo(x - 4, y + 1);
+          ctx.lineTo(x + 4, y + 1);
+        } else {
+          ctx.moveTo(x, y + 6);
+          ctx.lineTo(x - 4, y - 1);
+          ctx.lineTo(x + 4, y - 1);
+        }
+        ctx.closePath();
+        ctx.fill();
+        roundRect(ctx, x - w / 2, below ? y + 1 : y - 15, w, 14, 3);
+        ctx.fill();
+        ctx.fillStyle = this.theme.background;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(m.text, x, (below ? y + 8 : y - 8) + 1);
+      } else {
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle = this.theme.background;
+        ctx.fillRect(x - w / 2, below ? y : y - 13, w, 13);
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = m.color;
+        ctx.textAlign = "center";
+        ctx.textBaseline = below ? "top" : "bottom";
+        ctx.fillText(m.text, x, below ? y + 1 : y - 1);
+      }
+      ctx.restore();
     }
   }
 
@@ -588,6 +672,7 @@ export class VolumeShelfsChart {
   private drawAnchor(): void {
     const { ctx, indexAxis, plot, theme } = this;
     if (!indexAxis) return;
+    if (this.model!.anchorIndex < 0) return; // anchor-less view (Trail tab)
     const x = Math.round(indexAxis.x(this.model!.anchorIndex)) + 0.5;
     ctx.strokeStyle = theme.anchor;
     ctx.lineWidth = 1.5;

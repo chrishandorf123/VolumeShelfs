@@ -3373,3 +3373,114 @@ table.results tbody tr.sel td {
   min-height: 0;
   overflow-y: auto;
 }
+
+/* ---- Trail tab (quiet trail + signals) ---- */
+#view-trail {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+#trailChart {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.trail-controls .rot-blurb {
+  flex: 1 1 auto;
+}
+
+.trail-state {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  text-align: center;
+}
+
+.trail-state.demand {
+  color: #26a69a;
+  background: rgba(38, 166, 154, 0.1);
+  border-color: rgba(38, 166, 154, 0.4);
+}
+
+.trail-state.supply {
+  color: #ef5350;
+  background: rgba(239, 83, 80, 0.1);
+  border-color: rgba(239, 83, 80, 0.4);
+}
+
+.trail-state.neutral {
+  color: var(--muted);
+  background: rgba(139, 149, 167, 0.08);
+}
+
+.trail-headline {
+  margin: 8px 0 10px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.trail-note {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.sig-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  margin-bottom: 4px;
+  border: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.sig-row.demand {
+  border-color: rgba(38, 166, 154, 0.35);
+}
+
+.sig-row.supply {
+  border-color: rgba(239, 83, 80, 0.35);
+}
+
+.sig-side {
+  font-weight: 800;
+  flex: 0 0 auto;
+}
+
+.sig-side.long {
+  color: #26a69a;
+}
+
+.sig-side.short {
+  color: #ef5350;
+}
+
+.sig-detail {
+  color: var(--text);
+  flex: 1 1 auto;
+}
+
+.sig-outcome {
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+
+.trail-rules {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.trail-rules li {
+  margin-bottom: 6px;
+}

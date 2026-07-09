@@ -45,6 +45,7 @@ import { formatPrice, formatVolume } from "./chart/scale";
 import { initScanner } from "./scanner-ui";
 import { initRotation } from "./rotation-ui";
 import { initPlaybooks } from "./playbooks-ui";
+import { initTrail } from "./trail-ui";
 import { initGuide } from "./guide";
 import { coachPanelHtml } from "./coach-view";
 import { recoPanelHtml } from "./reco-view";
@@ -869,10 +870,12 @@ function initTabs(): void {
   };
   const rotation = initRotation(setStatus, scanner, toScanner);
   const playbooks = initPlaybooks(scanner, toScanner);
+  const trail = initTrail(() => ({ candles: state.candles, source: state.source, interval: els.interval.value }));
   const views: Record<string, HTMLElement> = {
     explore: $("view-explore"),
     scanner: $("view-scanner"),
     rotation: $("view-rotation"),
+    trail: $("view-trail"),
     playbooks: $("view-playbooks"),
   };
   tabs.forEach((tab) => {
@@ -883,6 +886,7 @@ function initTabs(): void {
       if (view === "scanner") scanner.activate();
       else scanner.deactivate(); // stop the monitor's auto-refresh polling
       if (view === "rotation") rotation.activate();
+      if (view === "trail") trail.activate();
       if (view === "playbooks") playbooks.activate();
       if (view === "explore") chart.resize();
     });

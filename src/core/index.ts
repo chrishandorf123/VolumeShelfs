@@ -37,3 +37,4 @@ export * from "./footprint";
 export * from "./ablation";
 export * from "./retracement";
 export * from "./traderSignals";
+export * from "./trail";

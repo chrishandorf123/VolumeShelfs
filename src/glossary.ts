@@ -288,6 +288,14 @@ export const GLOSSARY: GlossaryEntry[] = [
     why: "Volume commits money; price just quotes it. OBV divergences frequently front-run the move price eventually makes.",
   },
   {
+    id: "trail-signals",
+    term: "Trail signals (double SuperTrend)",
+    short: "A trailing stop drawn as dots, and a signal only when BOTH trails flip AND volume agrees.",
+    plain:
+      "SuperTrend places a band a few ATRs away from price that can only ratchet toward it — a mechanical trailing stop. The Trail tab runs two of them (a tight 10/×1.5 and a loose 11/×2.5, the same pair as the IncomeSharks playbook confirm) and draws dots only while BOTH agree on a side; no dots means the trails disagree — stand aside. A LONG or SHORT tag fires only when agreement flips to a new side and the close is on the right side of the 20-bar EMA with OBV not objecting — one signal per regime, never a stream of them. Each signal carries a fixed plan (stop = the loose trail, target = 2R) so past signals can be replayed honestly: win / stopped / flipped out, with the win rate and expectancy shown. It's an open reconstruction of the paid 'trail + CALL/PUT' overlays — every rule visible, nothing else in the box.",
+    why: "Paid signal overlays only ever show you their best screenshots. Rebuilding the mechanics in the open, with fewer signals and measured outcomes, tells you whether the pretty dots actually carry an edge on YOUR symbols.",
+  },
+  {
     id: "early-signal",
     term: "Early signal (stealth accumulation)",
     short: "Tells that precede the breakout the crowd waits for: dry-up, squeeze, OBV in, higher lows, pocket pivot.",
