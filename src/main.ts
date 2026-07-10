@@ -28,6 +28,7 @@ import {
   recommend,
   recoContextFromScan,
   runBacktest,
+  heisenbergRead,
   scanTicker,
   shannonRead,
   smaSeries,
@@ -35,6 +36,7 @@ import {
   type AnchorCoach,
   type Candle,
   type ChosenAnchor,
+  type HeisenbergRead,
   type MarketRegime,
   type ScanResult,
   type SignalProof,
@@ -58,6 +60,7 @@ import { loadPositions } from "./journal-store";
 import { sectorOf } from "./data/sectors";
 import { confirmationPanelHtml, confluencePanelHtml, thesisPanelHtml } from "./thesis-view";
 import { tradePlanPanelHtml, wirePositionSizer, wireTrackButton } from "./trade-view";
+import { heisenbergPanelHtml } from "./heisenberg-view";
 import { modelPanelHtml } from "./model-view";
 import { initChat } from "./chat-ui";
 import { registerChatContext } from "./chat/context";
@@ -599,6 +602,19 @@ function renderExploreReco(r: ScanResult | null): void {
     discipline: disc,
   });
 
+  // "Would Heisenberg take this trade?" — calibrated on daily bars.
+  let hbRead: HeisenbergRead | null = null;
+  let hbWhy = "";
+  if (!isDaily) hbWhy = "Calibrated on daily bars — switch Interval to Daily.";
+  else if (state.candles.length < 60) hbWhy = `Needs ≥60 daily bars — have ${state.candles.length}.`;
+  else {
+    try {
+      hbRead = heisenbergRead(state.candles);
+    } catch (err) {
+      hbWhy = `Heisenberg read failed: ${err instanceof Error ? err.message : String(err)}`;
+    }
+  }
+
   // Snapshot the whole on-screen read for the chat coach (plain text).
   const inst = state.candles.length ? institutionalRead(state.candles) : null;
   const early = state.candles.length ? earlySignal(state.candles) : null;
@@ -617,6 +633,9 @@ function renderExploreReco(r: ScanResult | null): void {
       const rtc = state.candles.length ? analyzeRetracement(state.candles) : null;
       return rtc ? `Dip grader: ${rtc.verdict.toUpperCase()} (${(rtc.depth * 100).toFixed(0)}% retraced, zone ${rtc.zone}) — ${rtc.headline}` : "";
     })(),
+    hbRead
+      ? `Heisenberg check (would @Mr_Derivatives take it?): ${hbRead.call} — ${hbRead.headline}${hbRead.best ? ` Setup: ${hbRead.best.name}.` : ""} Sizing: ${hbRead.sizing}`
+      : `Heisenberg check: unavailable — ${hbWhy}`,
     activePlan
       ? `Plan (${side}): entry ${formatPrice(activePlan.entry)}, stop ${formatPrice(activePlan.stop)}, T1 ${formatPrice(activePlan.t1)}${activePlan.t1Synthetic ? " (synthetic ~3% marker, not a real level)" : ""} (${activePlan.rMultipleT1.toFixed(1)}R), T2 ${formatPrice(activePlan.t2)}${activePlan.t2Synthetic ? " (synthetic ~3% marker)" : ""} (${activePlan.rMultipleT2.toFixed(1)}R), risk ${(activePlan.riskPct * 100).toFixed(1)}%.`
       : `Plan: none — no support shelf to build one from.`,
@@ -639,6 +658,7 @@ function renderExploreReco(r: ScanResult | null): void {
       ? earlyPanelHtml(early, state.candles.length >= 320 ? earlySignal(resampleWeekly(state.candles)) : null)
       : "") +
     retracementPanelHtml(state.candles.length ? analyzeRetracement(state.candles) : null, r.price) +
+    heisenbergPanelHtml(hbRead, hbWhy) +
     proofPanelHtml(exploreProof(symbol)) +
     disciplinePanelHtml(disc) +
     (shan

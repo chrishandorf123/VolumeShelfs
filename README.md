@@ -31,6 +31,15 @@ The app has two tabs:
   of tickers, rank the candidates, and drill into each one's chart, gates,
   trade plan and confirmation checklist.
 
+The Explore sidebar also includes the **Heisenberg check** — load any ticker
+(daily bars) and it answers *"would @Mr_Derivatives take this trade?"* using a
+rule-based reconstruction of his playbook (oversold streak/RSI bounces,
+gap-fill magnets, roundtrip-to-breakout support, 50/200dma touches, parabolic
+fades, Bollinger coils), with his structural stop/target style, his sizing
+tiers, and the verbatim tweet behind each setup. Built from the 64,865-tweet
+corpus documented in [docs/MR_DERIVATIVES.md](docs/MR_DERIVATIVES.md) —
+engine in `src/core/heisenberg.ts`. His own caveat applies: "I bat .500."
+
 ![overview](docs/overview.png)
 ![scanner](docs/scanner.png)
 
